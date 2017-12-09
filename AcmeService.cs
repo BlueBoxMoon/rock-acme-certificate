@@ -520,36 +520,8 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="domains">The list of domains that this certificate will be for. The first domain listed will be the CommonName.</param>
         /// <param name="keyPair">The RSA key pair for signing the certificate request, this is the key that will be used in conjunction with the certificate.</param>
         /// <returns>A tuple whose first value is the private key data and whose second value is a list of certificates. Everything is encoded in DER format, the first certificate is the signed certificate.</returns>
-        public Tuple<byte[], List<byte[]>> GetCertificate( ICollection<string> domains )
+        public List<byte[]> GetCertificate( ICollection<string> domains, Pkcs10CertificationRequest csr )
         {
-            //
-            // Generate a new key for the certificate.
-            //
-            var generator = new RsaKeyPairGenerator();
-            generator.Init( new KeyGenerationParameters( new SecureRandom(), 2048 ) );
-            var keyPair = generator.GenerateKeyPair();
-            var sig = new Asn1SignatureFactory( "SHA256WITHRSA", keyPair.Private );
-
-            var commonName = new X509Name( new DerObjectIdentifier[] { X509Name.CN }, new string[] { domains.First() } );
-
-            //
-            // Generate the list of subject alternative names.
-            //
-            List<GeneralName> names = new List<GeneralName>();
-            foreach ( var domain in domains )
-            {
-                names.Add( new GeneralName( GeneralName.DnsName, domain ) );
-            }
-            var sanOctect = new DerOctetString( new GeneralNames( names.ToArray() ) );
-            var sanSequence = new DerSequence( X509Extensions.SubjectAlternativeName, sanOctect );
-            var extensionSet = new DerSet( new DerSequence( sanSequence ) );
-            var attributes = new DerSet( new DerSequence( PkcsObjectIdentifiers.Pkcs9AtExtensionRequest, extensionSet ) );
-
-            //
-            // Generate the CSR from all the data.
-            //
-            var csr = new Pkcs10CertificationRequest( sig, commonName, keyPair.Public, attributes, keyPair.Private );
-
             var payload = new
             {
                 resource = "new-cert",
@@ -579,10 +551,7 @@ namespace com.blueboxmoon.AcmeCertificate
                 }
             }
 
-            var privateKeyData = PrivateKeyInfoFactory.CreatePrivateKeyInfo( keyPair.Private ).ToAsn1Object().GetDerEncoded();
-            var certificateData = certificates.Select( c => c.GetEncoded() ).ToList();
-
-            return new Tuple<byte[], List<byte[]>>( privateKeyData, certificateData );
+            return certificates.Select( c => c.GetEncoded() ).ToList();
         }
 
         /// <summary>
@@ -638,6 +607,47 @@ namespace com.blueboxmoon.AcmeCertificate
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Generate a new private key pair.
+        /// </summary>
+        /// <returns>The private key pair.</returns>
+        static public AsymmetricCipherKeyPair GenerateKeyPair()
+        {
+            var generator = new RsaKeyPairGenerator();
+            generator.Init( new KeyGenerationParameters( new SecureRandom(), 2048 ) );
+            return generator.GenerateKeyPair();
+        }
+
+        /// <summary>
+        /// Generate a private key and CSR for the specified domain list.
+        /// </summary>
+        /// <param name="keyPair">The private key pair to sign the CSR with.</param>
+        /// <param name="domains">The domains to be encoded in the CSR.</param>
+        /// <returns>A CSR object that is signed by the private key.</returns>
+        static public Pkcs10CertificationRequest GenerateCSR( AsymmetricCipherKeyPair keyPair, ICollection<string> domains )
+        {
+            var sig = new Asn1SignatureFactory( "SHA256WITHRSA", keyPair.Private );
+            var commonName = new X509Name( new DerObjectIdentifier[] { X509Name.CN }, new string[] { domains.First() } );
+
+            //
+            // Generate the list of subject alternative names.
+            //
+            List<GeneralName> names = new List<GeneralName>();
+            foreach ( var domain in domains )
+            {
+                names.Add( new GeneralName( GeneralName.DnsName, domain ) );
+            }
+            var sanOctect = new DerOctetString( new GeneralNames( names.ToArray() ) );
+            var sanSequence = new DerSequence( X509Extensions.SubjectAlternativeName, sanOctect );
+            var extensionSet = new DerSet( new DerSequence( sanSequence ) );
+            var attributes = new DerSet( new DerSequence( PkcsObjectIdentifiers.Pkcs9AtExtensionRequest, extensionSet ) );
+
+            //
+            // Generate the CSR from all the data.
+            //
+            return new Pkcs10CertificationRequest( sig, commonName, keyPair.Public, attributes, keyPair.Private );
         }
 
         #endregion

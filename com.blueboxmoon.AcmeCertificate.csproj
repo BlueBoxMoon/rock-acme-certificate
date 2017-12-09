@@ -49,12 +49,17 @@
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\RockWeb\Bin\Newtonsoft.Json.dll</HintPath>
     </Reference>
+    <Reference Include="Quartz, Version=2.0.0.100, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\RockWeb\Bin\Quartz.dll</HintPath>
+    </Reference>
     <Reference Include="Rock">
       <HintPath>..\RockWeb\Bin\Rock.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Runtime.Caching" />
+    <Reference Include="System.Web" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -68,6 +73,7 @@
     <Compile Include="AcmeService.cs" />
     <Compile Include="AcmeHelper.cs" />
     <Compile Include="BindingData.cs" />
+    <Compile Include="Jobs\RenewAcmeCertificates.cs" />
     <Compile Include="JWK\JsonWebKey.cs" />
     <Compile Include="JWK\KeyType.cs" />
     <Compile Include="Migrations\001_SystemData.cs" />

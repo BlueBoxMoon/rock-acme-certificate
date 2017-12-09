@@ -480,57 +480,55 @@ namespace com.blueboxmoon.AcmeCertificate
         {
             var rockContext = new RockContext();
             var group = new GroupService( rockContext ).Get( groupId );
-            var cache = Rock.Web.Cache.RockMemoryCache.Default;
             var account = LoadAccountData();
-            var acme = new AcmeService( Convert.FromBase64String( account.Key ), account.TestMode );
 
             group.LoadAttributes( rockContext );
 
-            errorMessage = string.Empty;
+            //
+            // Get the list of domains and the old certificate hash.
+            //
             var domains = group.GetAttributeValues( "Domains" );
-
-            //
-            // Attempt to validate all the domains.
-            //
-            acme.ValidateDomains( domains, ( domain, token, authorization ) =>
+            byte[] oldCertificate;
+            try
             {
-                if ( authorization != null )
-                {
-                    cache.Add( string.Format( "com.blueboxmoon.AcmeChallenge.{0}", token.Token ), authorization, new CacheItemPolicy() );
-                }
-                else
-                {
-                    cache.Remove( string.Format( "com.blueboxmoon.AcmeChallenge.{0}", token.Token ) );
-                }
-            } );
+                oldCertificate = Convert.FromBase64String( group.GetAttributeValue( "CertificateHash" ) );
+            }
+            catch
+            {
+                oldCertificate = null;
+            }
 
             //
             // Get the certificate private key and cert data.
             //
-            var tuple = acme.GetCertificate( domains );
+            var keyPair = AcmeService.GenerateKeyPair();
+            var privateKeyData = PrivateKeyInfoFactory.CreatePrivateKeyInfo( keyPair.Private ).ToAsn1Object().GetDerEncoded();
+            var csr = AcmeService.GenerateCSR( keyPair, domains );
+            var certs = RenewOfflineCertificate( groupId, manualRun, csr.ToAsn1Object().GetDerEncoded(), out errorMessage );
 
             //
-            // Set the date and time we last renewed and the friendly certificate name.
+            // If not offline mode, install the certificate and configure IIS.
             //
-            group.SetAttributeValue( "LastRenewed", DateTime.Now.ToString() );
-            var friendlyName = string.Format( "{0} {1}", domains[0], DateTime.Now.ToString() );
-            group.SetAttributeValue( "Expires", new X509CertificateParser().ReadCertificate( tuple.Item2.First() ).NotAfter.ToString() );
-
-            //
-            // Compute the hash of the primary certificate.
-            //
-            byte[] certificateHash;
-            using ( var hasher = System.Security.Cryptography.SHA1.Create() )
-            {
-                certificateHash = hasher.ComputeHash( tuple.Item2.First() );
-            }
-
             if ( !account.OfflineMode )
             {
                 //
+                // Set the friendly certificate name.
+                //
+                var friendlyName = string.Format( "{0} {1}", domains[0], DateTime.Now.ToString() );
+
+                //
+                // Compute the hash of the primary certificate.
+                //
+                byte[] certificateHash;
+                using ( var hasher = System.Security.Cryptography.SHA1.Create() )
+                {
+                    certificateHash = hasher.ComputeHash( certs.First() );
+                }
+
+                //
                 // Attempt to install the private key and certificates.
                 //
-                InstallCertificate( friendlyName, tuple.Item1, tuple.Item2 );
+                InstallCertificate( friendlyName, privateKeyData, certs );
 
                 //
                 // Install or update all bindings for this certificate.
@@ -551,24 +549,73 @@ namespace com.blueboxmoon.AcmeCertificate
                 else
                 {
                     //
-                    // Everything worked, snag the previous certificate hash and delete it if we are configured
-                    // to do so.
+                    // Everything worked, delete the old certificate it if we are configured to do so.
                     //
-                    byte[] oldCertificate;
-                    try
-                    {
-                        oldCertificate = Convert.FromBase64String( group.GetAttributeValue( "CertificateHash" ) );
-                    }
-                    catch
-                    {
-                        oldCertificate = null;
-                    }
-
                     if ( group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ) && oldCertificate != null )
                     {
                         RemoveCertificate( oldCertificate );
                     }
                 }
+            }
+
+            return string.IsNullOrWhiteSpace( errorMessage ) ? new Tuple<byte[], List<byte[]>>( privateKeyData, certs ) : null;
+        }
+
+        /// <summary>
+        /// Renews a certificate and installs it in IIS.
+        /// </summary>
+        /// <param name="groupId">The Id of the group that contains all the certificate information.</param>
+        /// <param name="manualRun">If this is a manual run by the user, if true then bindings are initialized instead of only updated.</param>
+        /// <param name="errorMessage">On output contains an error message if the certificate did not renew.</param>
+        static public List<byte[]> RenewOfflineCertificate( int groupId, bool manualRun, byte[] csrData, out string errorMessage )
+        {
+            var rockContext = new RockContext();
+            var group = new GroupService( rockContext ).Get( groupId );
+            var cache = Rock.Web.Cache.RockMemoryCache.Default;
+            var account = LoadAccountData();
+            var acme = new AcmeService( Convert.FromBase64String( account.Key ), account.TestMode );
+
+            errorMessage = string.Empty;
+
+            group.LoadAttributes( rockContext );
+
+            var domains = group.GetAttributeValues( "Domains" );
+            var csr = new Pkcs10CertificationRequest( csrData );
+
+            //
+            // Attempt to validate all the domains.
+            //
+            acme.ValidateDomains( domains, ( domain, token, authorization ) =>
+            {
+                if ( authorization != null )
+                {
+                    cache.Add( string.Format( "com.blueboxmoon.AcmeChallenge.{0}", token.Token ), authorization, new CacheItemPolicy() );
+                }
+                else
+                {
+                    cache.Remove( string.Format( "com.blueboxmoon.AcmeChallenge.{0}", token.Token ) );
+                }
+            } );
+
+            //
+            // Get the certificate.
+            //
+            var certs = acme.GetCertificate( domains, csr );
+
+            //
+            // Set the date and time we last renewed and the friendly certificate name.
+            //
+            group.SetAttributeValue( "LastRenewed", DateTime.Now.ToString() );
+            var friendlyName = string.Format( "{0} {1}", domains[0], DateTime.Now.ToString() );
+            group.SetAttributeValue( "Expires", new X509CertificateParser().ReadCertificate( certs.First() ).NotAfter.ToLocalTime().ToString() );
+
+            //
+            // Compute the hash of the primary certificate.
+            //
+            byte[] certificateHash;
+            using ( var hasher = System.Security.Cryptography.SHA1.Create() )
+            {
+                certificateHash = hasher.ComputeHash( certs.First() );
             }
 
             //
@@ -577,7 +624,7 @@ namespace com.blueboxmoon.AcmeCertificate
             group.SetAttributeValue( "CertificateHash", Convert.ToBase64String( certificateHash ) );
             group.SaveAttributeValues( rockContext );
 
-            return string.IsNullOrWhiteSpace( errorMessage ) ? tuple : null;
+            return string.IsNullOrWhiteSpace( errorMessage ) ? certs : null;
         }
     }
 }

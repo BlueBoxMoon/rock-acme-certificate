@@ -53,6 +53,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
 
             gBindings.Actions.ShowAdd = true;
             gBindings.Actions.AddClick += gBindings_Add;
+            lbDetailDelete.Attributes["onclick"] = string.Format( "javascript: return Rock.dialogs.confirmDelete(event, '{0}');", "Certificate" );
         }
 
         /// <summary>
@@ -66,33 +67,14 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
 
             if ( !IsPostBack )
             {
-                int groupId = PageParameter( "Id" ).AsInteger();
-
-                ltTitle.Text = groupId != 0 ? "Edit Certificate" : "Add Certificate";
-
-                BindingsState = new List<BindingData>();
-
-                //
-                // Attempt to load existing certificate data.
-                //
-                if ( groupId != 0 )
+                if ( PageParameter( "Id" ).AsInteger() != 0 )
                 {
-                    var group = new GroupService( new RockContext() ).Get( groupId );
-
-                    if ( group != null )
-                    {
-                        group.LoadAttributes();
-
-                        tbFriendlyName.Text = group.Name;
-                        vlDomains.Value = group.GetAttributeValue( "Domains" );
-                        cbRemoveOldCertificate.Checked = group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false );
-
-                        var bindings = group.GetAttributeValue( "Bindings" ).Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries );
-                        BindingsState = bindings.Select( b => new BindingData( b ) ).ToList();
-                    }
+                    ShowDetail();
                 }
-
-                GridBind();
+                else
+                {
+                    ShowEdit();
+                }
             }
 
             nbMessage.Text = string.Empty;
@@ -112,6 +94,62 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         #endregion
 
         #region Methods
+
+        /// <summary>
+        /// Show the read-only panel and fill in all fields.
+        /// </summary>
+        protected void ShowDetail()
+        {
+            var rockContext = new RockContext();
+            var group = new GroupService( rockContext ).Get( PageParameter( "Id" ).AsInteger() );
+
+            group.LoadAttributes( rockContext );
+
+            ltDetailTitle.Text = group.Name;
+            ltRemoveOld.Text = group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean().ToString();
+            ltDetailDomains.Text = string.Join( "<br />", group.GetAttributeValue( "Domains" ).SplitDelimitedValues() );
+            ltDetailLastRenewed.Text = group.GetAttributeValue( "LastRenewed" );
+            ltDetailExpires.Text = group.GetAttributeValue( "Expires" );
+
+            var bindings = group.GetAttributeValue( "Bindings" )
+                .Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries )
+                .Select( b => new BindingData( b ) )
+                .Select( b => string.Format( "{0} {1}:{2}:{3}", b.Site, string.IsNullOrWhiteSpace( b.IPAddress ) ? "*" : b.IPAddress, b.Port, b.Domain ) );
+
+            ltDetailBindings.Text = string.Join( "<br />", bindings );
+
+            pnlEdit.Visible = false;
+            pnlDetail.Visible = true;
+        }
+
+        /// <summary>
+        /// Show the edit panel and fill in all fields.
+        /// </summary>
+        protected void ShowEdit()
+        {
+            int groupId = PageParameter( "Id" ).AsInteger();
+            var group = new GroupService( new RockContext() ).Get( groupId );
+
+            ltEditTitle.Text = groupId != 0 ? "Edit Certificate" : "Add Certificate";
+            BindingsState = new List<BindingData>();
+
+            if ( group != null )
+            {
+                group.LoadAttributes();
+
+                tbFriendlyName.Text = group.Name;
+                vlDomains.Value = group.GetAttributeValue( "Domains" );
+                cbRemoveOldCertificate.Checked = group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false );
+
+                var bindings = group.GetAttributeValue( "Bindings" ).Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries );
+                BindingsState = bindings.Select( b => new BindingData( b ) ).ToList();
+            }
+
+            GridBind();
+
+            pnlDetail.Visible = false;
+            pnlEdit.Visible = true;
+        }
 
         /// <summary>
         /// Bind the IIS Bindings grid to show the current list of configured bindings.
@@ -152,14 +190,77 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
 
         #endregion
 
-        #region Event Methods
+        #region Detail Event Methods
 
         /// <summary>
-        /// Handles the Click event of the lbSave control.
+        /// Handles the Click event of the lbDetailEdit control.
         /// </summary>
         /// <param name="sender">The source of the event.</param>
         /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
-        protected void lbSave_Click( object sender, EventArgs e )
+        protected void lbDetailEdit_Click( object sender, EventArgs e )
+        {
+            ShowEdit();
+        }
+
+        /// <summary>
+        /// Handles the Click event of the lbDetailRenew control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbDetailRenew_Click( object sender, EventArgs e )
+        {
+            pnlDetail.Visible = false;
+            pnlRenew.Visible = true;
+            pnlRenewOutput.Visible = false;
+            pnlRenewInput.Visible = true;
+            pnlRenewSuccess.Visible = false;
+            nbRenewNotOffline.Visible = false;
+
+            var rockContext = new RockContext();
+            var group = new GroupService( rockContext ).Get( PageParameter( "Id" ).AsInteger() );
+
+            ltRenewTitle.Text = group.Name;
+            tbRenewCSR.Text = string.Empty;
+        }
+
+        /// <summary>
+        /// Handles the Click event of the lbDetailCancel control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbDetailCancel_Click( object sender, EventArgs e )
+        {
+            NavigateToParentPage();
+        }
+
+        /// <summary>
+        /// Handles the Click event of the lbDetailDelete control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbDetailDelete_Click( object sender, EventArgs e )
+        {
+            var rockContext = new RockContext();
+            var groupService = new GroupService( rockContext );
+
+            var group = groupService.Get( PageParameter( "Id" ).AsInteger() );
+            groupService.Delete( group );
+
+            rockContext.SaveChanges();
+
+            NavigateToParentPage();
+        }
+
+        #endregion
+
+        #region Edit Event Methods
+
+        /// <summary>
+        /// Handles the Click event of the lbEditSave control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbEditSave_Click( object sender, EventArgs e )
         {
             //
             // Verify we have at least one domain name entered.
@@ -218,17 +319,17 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
                  group.SaveAttributeValues( rockContext );
              } );
 
-            NavigateToParentPage();
+            NavigateToCurrentPage( new Dictionary<string, string> { { "Id", group.Id.ToString() } } );
         }
 
         /// <summary>
-        /// Handles the Click event of the lbSave control.
+        /// Handles the Click event of the lbEditCancel control.
         /// </summary>
         /// <param name="sender">The source of the event.</param>
         /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
-        protected void lbCancel_Click( object sender, EventArgs e )
+        protected void lbEditCancel_Click( object sender, EventArgs e )
         {
-            NavigateToParentPage();
+            ShowDetail();
         }
 
         /// <summary>
@@ -317,6 +418,188 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
 
             mdEditBinding.Hide();
             GridBind();
+        }
+
+        #endregion
+
+        #region Renew Event Methods
+
+        /// <summary>
+        /// Handles the CheckChanged event of the cbRenewCustomCSR control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void cbRenewCustomCSR_CheckedChanged( object sender, EventArgs e )
+        {
+            if ( cbRenewCustomCSR.Checked )
+            {
+                tbRenewCSR.Visible = AcmeHelper.LoadAccountData().OfflineMode;
+                nbRenewNotOffline.Visible = !tbRenewCSR.Visible;
+                lbRequestCertificate.Enabled = !nbRenewNotOffline.Visible;
+            }
+            else
+            {
+                tbRenewCSR.Visible = false;
+                nbRenewNotOffline.Visible = false;
+                lbRequestCertificate.Enabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Handles the Click event of the lbRequestCertificate control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbRequestCertificate_Click( object sender, EventArgs e )
+        {
+            try
+            {
+                string errorMessage;
+
+                byte[] privateKeyData = null;
+                List<byte[]> certificateData;
+
+                if ( !string.IsNullOrWhiteSpace( tbRenewCSR.Text ) )
+                {
+                    string csrText = tbRenewCSR.Text
+                        .Replace( "-----BEGIN CERTIFICATE REQUEST-----", string.Empty )
+                        .Replace( "-----END CERTIFICATE REQUEST-----", string.Empty );
+                    byte[] csrData = Convert.FromBase64String( csrText );
+                    certificateData = AcmeHelper.RenewOfflineCertificate( PageParameter( "Id" ).AsInteger(), true, csrData, out errorMessage );
+                }
+                else
+                {
+                    //
+                    // Attempt to renew the certificate, new bindings will be created as needed.
+                    //
+                    var tuple = AcmeHelper.RenewCertificate( PageParameter( "Id" ).AsInteger(), true, out errorMessage );
+                    privateKeyData = tuple != null ? tuple.Item1 : null;
+                    certificateData = tuple != null ? tuple.Item2 : null;
+                }
+
+                if ( certificateData == null )
+                {
+                    nbRenewError.Text = errorMessage;
+                }
+                else
+                {
+                    pnlRenewInput.Visible = false;
+                    pnlRenewOutput.Visible = false;
+                    pnlRenewSuccess.Visible = false;
+
+                    if ( AcmeHelper.LoadAccountData().OfflineMode )
+                    {
+                        pnlRenewOutput.Visible = true;
+                        pnlRenewOutputPEM.Visible = true;
+                        pnlRenewOutputP12.Visible = false;
+
+                        rblRenewDownloadType.Items.Clear();
+                        rblRenewDownloadType.Items.Add( "PEM" );
+
+                        //
+                        // Prepare the PEM formatted certificates.
+                        //
+                        ltRenewPEM.Text = string.Empty;
+                        if ( privateKeyData != null )
+                        {
+                            ltRenewPEM.Text = string.Format( "-----BEGIN RSA PRIVATE KEY-----\n{0}\n-----END RSA PRIVATE KEY-----\n\n",
+                                Convert.ToBase64String( privateKeyData, Base64FormattingOptions.InsertLineBreaks ) ).ConvertCrLfToHtmlBr();
+                        }
+
+                        var certificates = certificateData
+                            .Select( c => Convert.ToBase64String( c, Base64FormattingOptions.InsertLineBreaks ) )
+                            .Select( c => string.Format( "-----BEGIN CERTIFICATE-----\n{0}\n-----END CERTIFICATE-----", c ) );
+                        ltRenewPEM.Text += string.Join( "\n\n", certificates ).ConvertCrLfToHtmlBr();
+
+                        if ( privateKeyData != null )
+                        {
+                            //
+                            // Prepare the PKCS12 formatted certificate.
+                            //
+                            var password = System.Web.Security.Membership.GeneratePassword( 8, 1 );
+                            var pkcs12 = AcmeHelper.GetPkcs12Certificate( password, privateKeyData, certificateData );
+
+                            //
+                            // Store the password protected PKCS12 data as a binary file.
+                            //
+                            var rockContext = new RockContext();
+                            var outputBinaryFile = new BinaryFile
+                            {
+                                IsTemporary = true,
+                                ContentStream = new System.IO.MemoryStream( pkcs12 ),
+                                FileName = "Certificate.p12",
+                                MimeType = "application/x-pkcs12",
+                                BinaryFileTypeId = new BinaryFileTypeService( rockContext ).Get( Rock.SystemGuid.BinaryFiletype.DEFAULT.AsGuid() ).Id
+                            };
+
+                            new BinaryFileService( rockContext ).Add( outputBinaryFile );
+
+                            rockContext.SaveChanges();
+
+                            //
+                            // Present a download link to the user.
+                            //
+                            ltRenewP12.Text = string.Format(
+                                "Your certificate has been encrypted with the password <code>{0}</code> and is ready for <a href='/GetFile.ashx?guid={1}'>download</a>.",
+                                password, outputBinaryFile.Guid );
+
+                            rblRenewDownloadType.Items.Add( "P12" );
+                        }
+
+                        rblRenewDownloadType.SelectedValue = "PEM";
+                    }
+                    else
+                    {
+                        pnlRenewSuccess.Visible = true;
+                    }
+                }
+            }
+            catch ( Exception ex )
+            {
+                ExceptionLogService.LogException( ex, Context );
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Handles the Click event of the lbRenewCancel control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbRenewCancel_Click( object sender, EventArgs e )
+        {
+            pnlRenew.Visible = false;
+            pnlDetail.Visible = true;
+        }
+
+        /// <summary>
+        /// Handles the Click event of the lbRenewDone control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbRenewDone_Click( object sender, EventArgs e )
+        {
+            pnlRenew.Visible = false;
+            NavigateToCurrentPage( new Dictionary<string, string> { { "Id", PageParameter( "Id" ) } } );
+        }
+
+        /// <summary>
+        /// Handles the SelectedIndexChanged event of the rblRenewDownloadType control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void rblRenewDownloadType_SelectedIndexChanged( object sender, EventArgs e )
+        {
+            if ( rblRenewDownloadType.SelectedValue == "PEM" )
+            {
+                pnlRenewOutputPEM.Visible = true;
+                pnlRenewOutputP12.Visible = false;
+            }
+            else
+            {
+                pnlRenewOutputPEM.Visible = false;
+                pnlRenewOutputP12.Visible = true;
+            }
         }
 
         #endregion

@@ -7,9 +7,45 @@
 </style>
 <asp:UpdatePanel ID="upCertificate" runat="server">
     <ContentTemplate>
-        <asp:Panel ID="pnlCertificate" runat="server" CssClass="panel panel-block">
+        <asp:Panel ID="pnlDetail" runat="server" CssClass="panel panel-block">
             <div class="panel-heading">
-                <h3 class="panel-title"><i class="fa fa-certificate"></i> <asp:Literal ID="ltTitle" runat="server" /></h3>
+                <h3 class="panel-title"><i class="fa fa-certificate"></i> <asp:Literal Id="ltDetailTitle" runat="server" /></h3>
+            </div>
+
+            <div class="panel-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <Rock:RockLiteral ID="ltRemoveOld" runat="server" Label="Remove Old Certificate" />
+                    </div>
+
+                    <div class="col-md-6">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <Rock:RockLiteral ID="ltDetailDomains" runat="server" Label="Domains" />
+                        <Rock:RockLiteral ID="ltDetailBindings" runat="server" Label="Bindings" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <Rock:RockLiteral ID="ltDetailLastRenewed" runat="server" Label="Last Renewed" />
+                        <Rock:RockLiteral ID="ltDetailExpires" runat="server" Label="Expires On" />
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <asp:LinkButton ID="lbDetailEdit" runat="server" CssClass="btn btn-primary" Text="Edit" OnClick="lbDetailEdit_Click" />
+                    <asp:LinkButton ID="lbDetailRenew" runat="server" CssClass="btn btn-success margin-l-sm" Text="Renew" OnClick="lbDetailRenew_Click" />
+                    <asp:LinkButton ID="lbDetailCancel" runat="server" CssClass="btn btn-link" Text="Cancel" OnClick="lbDetailCancel_Click" />
+                    <asp:LinkButton ID="lbDetailDelete" runat="server" CssClass="btn btn-link" Text="Delete" OnClick="lbDetailDelete_Click" />
+                </div>
+            </div>
+        </asp:Panel>
+
+        <asp:Panel ID="pnlEdit" runat="server" CssClass="panel panel-block">
+            <div class="panel-heading">
+                <h3 class="panel-title"><i class="fa fa-certificate"></i> <asp:Literal ID="ltEditTitle" runat="server" /></h3>
             </div>
 
             <div class="panel-body">
@@ -40,8 +76,8 @@
                     </Rock:Grid>
                 </Rock:RockControlWrapper>
 
-                <asp:LinkButton ID="lbSave" runat="server" Text="Save" CssClass="btn btn-primary" OnClick="lbSave_Click" />
-                <asp:LinkButton ID="lbCancel" runat="server" Text="Cancel" CssClass="btn btn-link" OnClick="lbCancel_Click" CausesValidation="false" />
+                <asp:LinkButton ID="lbEditSave" runat="server" Text="Save" CssClass="btn btn-primary" OnClick="lbEditSave_Click" />
+                <asp:LinkButton ID="lbEditCancel" runat="server" Text="Cancel" CssClass="btn btn-link" OnClick="lbEditCancel_Click" CausesValidation="false" />
             </div>
 
             <Rock:ModalDialog ID="mdEditBinding" runat="server" ValidationGroup="EditBinding" OnSaveClick="mdEditBinding_SaveClick">
@@ -59,6 +95,62 @@
                     <Rock:RockTextBox ID="tbEditBindingDomain" runat="server" Label="Domain" Help="If you enter a value here then only this domain name will match this binding." ValidationGroup="EditBinding" />
                 </Content>
             </Rock:ModalDialog>
+        </asp:Panel>
+
+        <asp:Panel ID="pnlRenew" runat="server" CssClass="panel panel-block" Visible="false">
+            <div class="panel-heading">
+                <h3 class="panel-title"><i class="fa fa-certificate"></i> Renew <asp:Literal ID="ltRenewTitle" runat="server" /></h3>
+            </div>
+
+            <div class="panel-body">
+                <asp:Panel ID="pnlRenewInput" runat="server">
+                    <Rock:NotificationBox ID="nbRenewError" runat="server" NotificationBoxType="Danger" />
+
+                    <Rock:RockCheckBox ID="cbRenewCustomCSR" runat="server" Label="Custom CSR" Help="If you have a CSR already that you want to use you can provide it. Leave this off to have one automatically generated." OnCheckedChanged="cbRenewCustomCSR_CheckedChanged" AutoPostBack="true" CausesValidation="false" />
+
+                    <Rock:NotificationBox ID="nbRenewNotOffline" runat="server" NotificationBoxType="Warning" Visible="false">
+                        In order to use a custom CSR you must be configured for Offline mode.
+                    </Rock:NotificationBox>
+
+                    <Rock:RockTextBox ID="tbRenewCSR" runat="server" TextMode="MultiLine" Rows="6" Label="CSR" Visible="false" />
+
+                    <div class="actions">
+                        <asp:LinkButton ID="lbRequestCertificate" runat="server" CssClass="btn btn-primary" Text="Request Certificate" OnClick="lbRequestCertificate_Click" />
+                        <asp:LinkButton ID="lbRenewCancel" runat="server" CssClass="btn btn-link" Text="Cancel" OnClick="lbRenewCancel_Click" />
+                    </div>
+                </asp:Panel>
+
+                <asp:Panel ID="pnlRenewOutput" runat="server">
+                    <div class="alert alert-info">
+                        You are operating in offline mode so your existing certificate and IIS settings have not been changed.
+                        You can download your certificate below.
+                    </div>
+
+                    <Rock:RockRadioButtonList ID="rblRenewDownloadType" runat="server" Label="Certificate Format" RepeatDirection="Horizontal" OnSelectedIndexChanged="rblRenewDownloadType_SelectedIndexChanged" AutoPostBack="true" />
+
+                    <asp:Panel ID="pnlRenewOutputPEM" runat="server">
+                        <code><asp:Literal ID="ltRenewPEM" runat="server" /></code>
+                    </asp:Panel>
+
+                    <asp:Panel ID="pnlRenewOutputP12" runat="server">
+                        <asp:Literal ID="ltRenewP12" runat="server" />
+                    </asp:Panel>
+
+                    <div class="actions margin-t-md">
+                        <asp:LinkButton ID="lbRenewDone" runat="server" CssClass="btn btn-primary" Text="Done" OnClick="lbRenewDone_Click" CausesValidation="false" />
+                    </div>
+                </asp:Panel>
+
+                <asp:Panel ID="pnlRenewSuccess" runat="server">
+                    <div class="alert alert-success">
+                        Certificate was renewed.
+                    </div>
+
+                    <div class="actions margin-t-md">
+                        <asp:LinkButton ID="lbRenewSuccessDone" runat="server" CssClass="btn btn-primary" Text="Done" OnClick="lbRenewDone_Click" CausesValidation="false" />
+                    </div>
+                </asp:Panel>
+            </div>
         </asp:Panel>
     </ContentTemplate>
 </asp:UpdatePanel>
