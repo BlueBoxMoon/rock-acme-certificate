@@ -266,3 +266,8 @@ __pycache__/
 
 # Cake - Uncomment if you are using it
 # tools/
+
+# Mac Files
+.DS_Store
+._*
+
