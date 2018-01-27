@@ -68,11 +68,10 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
                         if ( !expireDate.HasValue || expireDate.Value < limitDate )
                         {
                             Tuple<byte[], List<byte[]>> cert;
-                            string errorMessage;
 
                             try
                             {
-                                cert = AcmeHelper.RenewCertificate( group.Id, false, out errorMessage );
+                                cert = AcmeHelper.RenewCertificate( group.Id, false, out string errorMessage );
 
                                 if ( cert == null )
                                 {
