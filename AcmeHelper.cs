@@ -22,7 +22,7 @@ namespace com.blueboxmoon.AcmeCertificate
 {
     static public class AcmeHelper
     {
-        #region IIS Methods
+        #region Public IIS Methods
 
         /// <summary>
         /// Get the version number of the IIS installed on this system.
@@ -263,6 +263,10 @@ namespace com.blueboxmoon.AcmeCertificate
             return addresses.ToArray();
         }
 
+        #endregion
+
+        #region Private IIS Methods
+
         /// <summary>
         /// Install a new certificate into the Local Machine store for use by IIS.
         /// </summary>
@@ -270,7 +274,7 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="privateKeyData">Private key data in DER format associated with the certificate.</param>
         /// <param name="certificateData">The certificate and chain certificates for this import. Primary certificate should be in position 0.</param>
         /// <returns>SHA-1 signature of the certificate.</returns>
-        static public byte[] InstallCertificate( string friendlyName, byte[] privateKeyData, ICollection<byte[]> certificateData )
+        static private byte[] InstallCertificate( string friendlyName, byte[] privateKeyData, ICollection<byte[]> certificateData )
         {
             //
             // Compute the hash of the primary certificate.
@@ -290,15 +294,148 @@ namespace com.blueboxmoon.AcmeCertificate
             //
             // Do a final conversion of the certificate data into a PKCS12 blob and add it to the store.
             //
-            var finalCert = new X509Certificate2( GetPkcs12Certificate( null, privateKeyData, certificateData ),
-                string.Empty,
-                X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet );
-            finalCert.FriendlyName = friendlyName;
+            var pkcs12 = GetPkcs12Certificate( null, privateKeyData, certificateData );
+            var x509Flags = X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet;
+            var finalCert = new X509Certificate2( pkcs12, string.Empty, x509Flags )
+            {
+                FriendlyName = friendlyName
+            };
 
             store.Add( finalCert );
 
             return finalCert.GetCertHash();
         }
+
+        /// <summary>
+        /// Removes the certificate that matches the hash from the certificate store.
+        /// </summary>
+        /// <param name="certificateHash">The SHA-1 hash of the certificate to be removed.</param>
+        /// <returns>true if the certificate was removed.</returns>
+        static private bool RemoveCertificate( byte[] certificateHash )
+        {
+            //
+            // Open the certificate store.
+            //
+            var store = new X509Store( StoreName.My, StoreLocation.LocalMachine );
+            store.Open( OpenFlags.ReadWrite );
+
+            foreach ( var certificate in store.Certificates )
+            {
+                if ( certificate.GetCertHash().SequenceEqual( certificateHash ) )
+                {
+                    store.Remove( certificate );
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Configures the binding information for the specified site name.
+        /// </summary>
+        /// <param name="siteName">The name of the IIS site to configure.</param>
+        /// <param name="ipAddress">The IP address associated with this binding or null for all available.</param>
+        /// <param name="port">The port number, usually 443.</param>
+        /// <param name="hostname">The hostname associated with this binding or null for all available.</param>
+        /// <param name="certificateHash">The SHA-1 hash of the certificate.</param>
+        /// <param name="createBinding">True if a new binding should be created if it doesn't already exist.</param>
+        /// <returns>true if the binding was created/updated, false if not.</returns>
+        static private void ConfigureBindings( List<BindingData> bindings, byte[] certificateHash, bool createBinding = true )
+        {
+            //
+            // This chunk of code will add a new HTTPS binding linked to the certificate.
+            //
+            var server = new ServerManager();
+
+            foreach ( var bindingData in bindings )
+            {
+                string bindingInformation = string.Format( "{0}:{1}:{2}",
+                    !string.IsNullOrWhiteSpace( bindingData.IPAddress ) ? bindingData.IPAddress : "*",
+                    bindingData.Port,
+                    bindingData.Domain ?? string.Empty );
+
+                var site = server.Sites
+                    .Where( s => s.Name.Equals( bindingData.Site, StringComparison.CurrentCultureIgnoreCase ) )
+                    .FirstOrDefault();
+                if ( site == null )
+                {
+                    throw new Exception( string.Format( "Could not configure binding for site '{0}', no such site exists.", bindingData.Site ) );
+                }
+
+                var binding = site.Bindings
+                    .AsQueryable()
+                    .Where( b => b.BindingInformation.Equals( bindingInformation, StringComparison.CurrentCultureIgnoreCase ) )
+                    .FirstOrDefault();
+                if ( binding == null )
+                {
+                    if ( !createBinding )
+                    {
+                        throw new Exception( string.Format( "Could add new binding for site '{0}' with details '{1}', not configured to create new bindings and no existing binding was bound.", bindingData.Site, bindingInformation ) );
+                    }
+
+                    binding = site.Bindings.Add( bindingInformation, certificateHash, Enum.GetName( typeof( StoreName ), StoreName.My ) );
+                }
+                else
+                {
+                    binding.CertificateHash = certificateHash;
+                    binding.CertificateStoreName = Enum.GetName( typeof( StoreName ), StoreName.My );
+                }
+
+                if ( !string.IsNullOrWhiteSpace( binding.Host ) && GetIISVersion().Major >= 8 )
+                {
+                    binding.SetAttributeValue( "sslFlags", 1 );
+                }
+            }
+
+            server.CommitChanges();
+        }
+
+        #endregion
+
+        #region Account Methods
+
+        /// <summary>
+        /// Load the account data associated with this server.
+        /// </summary>
+        /// <returns>The AccountData object that contains the configuration for the Acme system.</returns>
+        static public AccountData LoadAccountData()
+        {
+            try
+            {
+                var attribute = Rock.Web.Cache.AttributeCache.Read( SystemGuid.Attribute.ACCOUNT.AsGuid() );
+
+                return JsonConvert.DeserializeObject<AccountData>( Rock.Security.Encryption.DecryptString( attribute.DefaultValue ) ) ?? new AccountData();
+            }
+            catch
+            {
+                return new AccountData();
+            }
+        }
+
+        /// <summary>
+        /// Saves the account data back to the Rock database.
+        /// </summary>
+        /// <param name="account">The AccountData that is to be saved to the database.</param>
+        static public void SaveAccountData( AccountData account )
+        {
+            using ( var rockContext = new RockContext() )
+            {
+                var attributeId = Rock.Web.Cache.AttributeCache.Read( SystemGuid.Attribute.ACCOUNT.AsGuid() ).Id;
+
+                var attribute = new AttributeService( rockContext ).Get( attributeId );
+                attribute.DefaultValue = Rock.Security.Encryption.EncryptString( JsonConvert.SerializeObject( account ) );
+
+                rockContext.SaveChanges();
+
+                Rock.Web.Cache.AttributeCache.Flush( attributeId );
+            }
+        }
+
+        #endregion
+
+        #region Public Renewal Methods
 
         /// <summary>
         /// Convert DER encoded private key data and certificate data into a PKCS12 container.
@@ -349,128 +486,6 @@ namespace com.blueboxmoon.AcmeCertificate
         }
 
         /// <summary>
-        /// Removes the certificate that matches the hash from the certificate store.
-        /// </summary>
-        /// <param name="certificateHash">The SHA-1 hash of the certificate to be removed.</param>
-        /// <returns>true if the certificate was removed.</returns>
-        static public bool RemoveCertificate( byte[] certificateHash )
-        {
-            //
-            // Open the certificate store.
-            //
-            var store = new X509Store( StoreName.My, StoreLocation.LocalMachine );
-            store.Open( OpenFlags.ReadWrite );
-
-            foreach ( var certificate in store.Certificates )
-            {
-                if ( certificate.GetCertHash().SequenceEqual( certificateHash ) )
-                {
-                    store.Remove( certificate );
-
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Configures the binding information for the specified site name.
-        /// </summary>
-        /// <param name="siteName">The name of the IIS site to configure.</param>
-        /// <param name="ipAddress">The IP address associated with this binding or null for all available.</param>
-        /// <param name="port">The port number, usually 443.</param>
-        /// <param name="hostname">The hostname associated with this binding or null for all available.</param>
-        /// <param name="certificateHash">The SHA-1 hash of the certificate.</param>
-        /// <param name="createBinding">True if a new binding should be created if it doesn't already exist.</param>
-        /// <returns>true if the binding was created/updated, false if not.</returns>
-        static public bool ConfigureBinding( BindingData bindingData, byte[] certificateHash, bool createBinding = true )
-        {
-            string bindingInformation = string.Format( "{0}:{1}:{2}",
-                !string.IsNullOrWhiteSpace( bindingData.IPAddress) ? bindingData.IPAddress : "*",
-                bindingData.Port,
-                bindingData.Domain ?? string.Empty );
-                
-            //
-            // This chunk of code will add a new HTTPS binding linked to the certificate.
-            //
-            var server = new ServerManager();
-            var site = server.Sites.Where( s => s.Name == bindingData.Site ).FirstOrDefault();
-            if ( site == null )
-            {
-                return false;
-            }
-
-            var binding = site.Bindings.AsQueryable().Where( b => b.BindingInformation == bindingInformation ).FirstOrDefault();
-            if ( binding == null )
-            {
-                if ( !createBinding )
-                {
-                    return false;
-                }
-
-                binding = site.Bindings.Add( bindingInformation, certificateHash, Enum.GetName( typeof( StoreName ), StoreName.My ) );
-            }
-            else
-            {
-                binding.CertificateHash = certificateHash;
-                binding.CertificateStoreName = Enum.GetName( typeof( StoreName ), StoreName.My );
-            }
-
-            if ( !string.IsNullOrWhiteSpace( binding.Host ) && GetIISVersion().Major >= 8 )
-            {
-                binding.SetAttributeValue( "sslFlags", 1 );
-            }
-
-            server.CommitChanges();
-
-            return true;
-        }
-
-        #endregion
-
-        #region Account Methods
-
-        /// <summary>
-        /// Load the account data associated with this server.
-        /// </summary>
-        /// <returns>The AccountData object that contains the configuration for the Acme system.</returns>
-        static public AccountData LoadAccountData()
-        {
-            try
-            {
-                var attribute = Rock.Web.Cache.AttributeCache.Read( SystemGuid.Attribute.ACCOUNT.AsGuid() );
-
-                return JsonConvert.DeserializeObject<AccountData>( Rock.Security.Encryption.DecryptString( attribute.DefaultValue ) ) ?? new AccountData();
-            }
-            catch
-            {
-                return new AccountData();
-            }
-        }
-
-        /// <summary>
-        /// Saves the account data back to the Rock database.
-        /// </summary>
-        /// <param name="account">The AccountData that is to be saved to the database.</param>
-        static public void SaveAccountData( AccountData account )
-        {
-            using ( var rockContext = new RockContext() )
-            {
-                var attributeId = Rock.Web.Cache.AttributeCache.Read( SystemGuid.Attribute.ACCOUNT.AsGuid() ).Id;
-
-                var attribute = new AttributeService( rockContext ).Get( attributeId );
-                attribute.DefaultValue = Rock.Security.Encryption.EncryptString( JsonConvert.SerializeObject( account ) );
-
-                rockContext.SaveChanges();
-
-                Rock.Web.Cache.AttributeCache.Flush( attributeId );
-            }
-        }
-
-        #endregion
-
-        /// <summary>
         /// Renews a certificate and installs it in IIS.
         /// </summary>
         /// <param name="groupId">The Id of the group that contains all the certificate information.</param>
@@ -517,44 +532,27 @@ namespace com.blueboxmoon.AcmeCertificate
                 var friendlyName = string.Format( "{0} {1}", domains[0], DateTime.Now.ToString() );
 
                 //
-                // Compute the hash of the primary certificate.
-                //
-                byte[] certificateHash;
-                using ( var hasher = System.Security.Cryptography.SHA1.Create() )
-                {
-                    certificateHash = hasher.ComputeHash( certs.First() );
-                }
-
-                //
                 // Attempt to install the private key and certificates.
                 //
-                InstallCertificate( friendlyName, privateKeyData, certs );
+                var certificateHash = InstallCertificate( friendlyName, privateKeyData, certs );
 
                 //
                 // Install or update all bindings for this certificate.
                 //
-                List<string> failedBindings = new List<string>();
-                foreach ( var binding in group.GetAttributeValue( "Bindings" ).Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries ) )
-                {
-                    if ( !ConfigureBinding( new BindingData( binding ), certificateHash, true ) )
-                    {
-                        failedBindings.Add( binding );
-                    }
-                }
+                var bindings = group
+                    .GetAttributeValue( "Bindings" )
+                    .Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries )
+                    .Select( s => new BindingData( s ) )
+                    .ToList();
 
-                if ( failedBindings.Any() )
+                ConfigureBindings( bindings, certificateHash, true );
+
+                //
+                // Everything worked, delete the old certificate it if we are configured to do so.
+                //
+                if ( group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ) && oldCertificate != null )
                 {
-                    throw new Exception( string.Format( "The following bindings failed to be configured: {0}", string.Join( ", ", failedBindings ) ) );
-                }
-                else
-                {
-                    //
-                    // Everything worked, delete the old certificate it if we are configured to do so.
-                    //
-                    if ( group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ) && oldCertificate != null )
-                    {
-                        RemoveCertificate( oldCertificate );
-                    }
+                    RemoveCertificate( oldCertificate );
                 }
             }
 
@@ -626,5 +624,7 @@ namespace com.blueboxmoon.AcmeCertificate
 
             return string.IsNullOrWhiteSpace( errorMessage ) ? certs : null;
         }
+
+        #endregion
     }
 }
