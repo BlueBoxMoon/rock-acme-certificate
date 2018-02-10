@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Xml;
 
@@ -274,7 +275,7 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="privateKeyData">Private key data in DER format associated with the certificate.</param>
         /// <param name="certificateData">The certificate and chain certificates for this import. Primary certificate should be in position 0.</param>
         /// <returns>SHA-1 signature of the certificate.</returns>
-        static private byte[] InstallCertificate( string friendlyName, byte[] privateKeyData, ICollection<byte[]> certificateData )
+        static private byte[] InstallCertificate( string friendlyName, byte[] privateKeyData, Org.BouncyCastle.Crypto.AsymmetricKeyParameter asymmetricKeyParameter, ICollection<byte[]> certificateData )
         {
             //
             // Compute the hash of the primary certificate.
@@ -296,12 +297,23 @@ namespace com.blueboxmoon.AcmeCertificate
             //
             var pkcs12 = GetPkcs12Certificate( null, privateKeyData, certificateData );
             var x509Flags = X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet;
-            var finalCert = new X509Certificate2( pkcs12, string.Empty, x509Flags )
+            var finalCert = new X509Certificate2( pkcs12, String.Empty, x509Flags )
             {
                 FriendlyName = friendlyName
             };
 
+            //
+            // Replace the private key with a private key that can be properly stored in the key store.
+            // This seems to fix the weird "login session expired" type errors.
+            //
+            var parameters = DotNetUtilities.ToRSAParameters( ( Org.BouncyCastle.Crypto.Parameters.RsaPrivateCrtKeyParameters ) asymmetricKeyParameter );
+            var cspParameters = new CspParameters( 1, "Microsoft Strong Cryptographic Provider", Guid.NewGuid().ToString(), new System.Security.AccessControl.CryptoKeySecurity(), null );
+            RSACryptoServiceProvider rcsp = new RSACryptoServiceProvider( cspParameters );
+            rcsp.ImportParameters( parameters );
+            finalCert.PrivateKey = rcsp;
+
             store.Add( finalCert );
+            store.Close();
 
             return finalCert.GetCertHash();
         }
@@ -534,7 +546,7 @@ namespace com.blueboxmoon.AcmeCertificate
                 //
                 // Attempt to install the private key and certificates.
                 //
-                var certificateHash = InstallCertificate( friendlyName, privateKeyData, certs );
+                var certificateHash = InstallCertificate( friendlyName, privateKeyData, keyPair.Private, certs );
 
                 //
                 // Install or update all bindings for this certificate.
