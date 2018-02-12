@@ -143,48 +143,21 @@
                 <asp:Panel ID="pnlRenewInput" runat="server">
                     <Rock:NotificationBox ID="nbRenewError" runat="server" NotificationBoxType="Danger" />
 
-                    <Rock:RockCheckBox ID="cbRenewCustomCSR" runat="server" Label="Custom CSR" Help="If you have a CSR already that you want to use you can provide it. Leave this off to have one automatically generated." OnCheckedChanged="cbRenewCustomCSR_CheckedChanged" AutoPostBack="true" CausesValidation="false" />
-
-                    <Rock:NotificationBox ID="nbRenewNotOffline" runat="server" NotificationBoxType="Warning" Visible="false">
-                        In order to use a custom CSR you must be configured for Offline mode.
-                    </Rock:NotificationBox>
+                    <Rock:RockCheckBox ID="cbRenewCustomCSR" runat="server" Label="Custom CSR" Help="If you have a CSR already that you want to use you can provide it. Leave this off to have one automatically generated." OnCheckedChanged="cbRenewCustomCSR_CheckedChanged" AutoPostBack="true" CausesValidation="false" Enabled="false" />
 
                     <Rock:RockTextBox ID="tbRenewCSR" runat="server" TextMode="MultiLine" Rows="6" Label="CSR" Visible="false" />
 
                     <div class="actions">
-                        <asp:LinkButton ID="lbRequestCertificate" runat="server" CssClass="btn btn-primary" Text="Request Certificate" OnClick="lbRequestCertificate_Click" />
+                        <a href="#" id="lbRequestCertificate" runat="server" class="btn btn-primary" onclick="return false;">Request Certificate</a>
                         <asp:LinkButton ID="lbRenewCancel" runat="server" CssClass="btn btn-link" Text="Cancel" OnClick="lbRenewCancel_Click" />
                     </div>
                 </asp:Panel>
 
-                <asp:Panel ID="pnlRenewOutput" runat="server">
-                    <div class="alert alert-info">
-                        You are operating in offline mode so your existing certificate and IIS settings have not been changed.
-                        You can download your certificate below.
-                    </div>
-
-                    <Rock:RockRadioButtonList ID="rblRenewDownloadType" runat="server" Label="Certificate Format" RepeatDirection="Horizontal" OnSelectedIndexChanged="rblRenewDownloadType_SelectedIndexChanged" AutoPostBack="true" />
-
-                    <asp:Panel ID="pnlRenewOutputPEM" runat="server">
-                        <code><asp:Literal ID="ltRenewPEM" runat="server" /></code>
-                    </asp:Panel>
-
-                    <asp:Panel ID="pnlRenewOutputP12" runat="server">
-                        <asp:Literal ID="ltRenewP12" runat="server" />
-                    </asp:Panel>
+                <asp:Panel ID="pnlRenewOutput" runat="server" style="display: none;">
+                    <div id="divRenewStatus" runat="server"></div>
 
                     <div class="actions margin-t-md">
-                        <asp:LinkButton ID="lbRenewDone" runat="server" CssClass="btn btn-primary" Text="Done" OnClick="lbRenewDone_Click" CausesValidation="false" />
-                    </div>
-                </asp:Panel>
-
-                <asp:Panel ID="pnlRenewSuccess" runat="server">
-                    <div class="alert alert-success">
-                        Certificate was renewed.
-                    </div>
-
-                    <div class="actions margin-t-md">
-                        <asp:LinkButton ID="lbRenewSuccessDone" runat="server" CssClass="btn btn-primary" Text="Done" OnClick="lbRenewDone_Click" CausesValidation="false" />
+                        <asp:LinkButton ID="lbRenewDone" runat="server" CssClass="btn btn-primary" style="display: none;" Text="Done" OnClick="lbRenewDone_Click" CausesValidation="false" />
                     </div>
                 </asp:Panel>
             </div>

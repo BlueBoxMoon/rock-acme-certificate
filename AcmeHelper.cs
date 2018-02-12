@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Runtime.Caching;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Xml;
@@ -17,7 +18,10 @@ using Newtonsoft.Json;
 using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.X509;
-using System.Runtime.Caching;
+using Org.BouncyCastle.Asn1;
+using Org.BouncyCastle.Asn1.Pkcs;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto;
 
 namespace com.blueboxmoon.AcmeCertificate
 {
@@ -275,7 +279,7 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="privateKeyData">Private key data in DER format associated with the certificate.</param>
         /// <param name="certificateData">The certificate and chain certificates for this import. Primary certificate should be in position 0.</param>
         /// <returns>SHA-1 signature of the certificate.</returns>
-        static private byte[] InstallCertificate( string friendlyName, byte[] privateKeyData, Org.BouncyCastle.Crypto.AsymmetricKeyParameter asymmetricKeyParameter, ICollection<byte[]> certificateData )
+        static private byte[] InstallCertificate( string friendlyName, byte[] privateKeyData, ICollection<byte[]> certificateData )
         {
             //
             // Compute the hash of the primary certificate.
@@ -285,6 +289,13 @@ namespace com.blueboxmoon.AcmeCertificate
             {
                 certificateHash = hasher.ComputeHash( certificateData.First() );
             }
+
+            //
+            // Get the private key parameter.
+            //
+            var privKeySequence = ( Asn1Sequence ) Asn1Object.FromByteArray( privateKeyData );
+            var rsa = RsaPrivateKeyStructure.GetInstance( privKeySequence );
+            AsymmetricKeyParameter privateKey = new RsaPrivateCrtKeyParameters( rsa.Modulus, rsa.PublicExponent, rsa.PrivateExponent, rsa.Prime1, rsa.Prime2, rsa.Exponent1, rsa.Exponent2, rsa.Coefficient );
 
             //
             // Open the certificate store.
@@ -306,7 +317,7 @@ namespace com.blueboxmoon.AcmeCertificate
             // Replace the private key with a private key that can be properly stored in the key store.
             // This seems to fix the weird "login session expired" type errors.
             //
-            var parameters = DotNetUtilities.ToRSAParameters( ( Org.BouncyCastle.Crypto.Parameters.RsaPrivateCrtKeyParameters ) asymmetricKeyParameter );
+            var parameters = DotNetUtilities.ToRSAParameters( ( RsaPrivateCrtKeyParameters ) privateKey );
             var cspParameters = new CspParameters( 1, "Microsoft Strong Cryptographic Provider", Guid.NewGuid().ToString(), new System.Security.AccessControl.CryptoKeySecurity(), null );
             RSACryptoServiceProvider rcsp = new RSACryptoServiceProvider( cspParameters );
             rcsp.ImportParameters( parameters );
@@ -316,32 +327,6 @@ namespace com.blueboxmoon.AcmeCertificate
             store.Close();
 
             return finalCert.GetCertHash();
-        }
-
-        /// <summary>
-        /// Removes the certificate that matches the hash from the certificate store.
-        /// </summary>
-        /// <param name="certificateHash">The SHA-1 hash of the certificate to be removed.</param>
-        /// <returns>true if the certificate was removed.</returns>
-        static private bool RemoveCertificate( byte[] certificateHash )
-        {
-            //
-            // Open the certificate store.
-            //
-            var store = new X509Store( StoreName.My, StoreLocation.LocalMachine );
-            store.Open( OpenFlags.ReadWrite );
-
-            foreach ( var certificate in store.Certificates )
-            {
-                if ( certificate.GetCertHash().SequenceEqual( certificateHash ) )
-                {
-                    store.Remove( certificate );
-
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         /// <summary>
@@ -404,6 +389,49 @@ namespace com.blueboxmoon.AcmeCertificate
             server.CommitChanges();
         }
 
+        /// <summary>
+        /// Verifies the binding information is already configured for the given certificate.
+        /// </summary>
+        /// <param name="bindings">The bindings that need to be verified.</param>
+        /// <param name="certificateHash">The SHA-1 hash of the certificate.</param>
+        /// <returns>true if the bindings are already configured for the certificate.</returns>
+        static private bool VerifyBindings( List<BindingData> bindings, byte[] certificateHash )
+        {
+            var server = new ServerManager();
+
+            foreach ( var bindingData in bindings )
+            {
+                string bindingInformation = string.Format( "{0}:{1}:{2}",
+                    !string.IsNullOrWhiteSpace( bindingData.IPAddress ) ? bindingData.IPAddress : "*",
+                    bindingData.Port,
+                    bindingData.Domain ?? string.Empty );
+
+                var site = server.Sites
+                    .Where( s => s.Name.Equals( bindingData.Site, StringComparison.CurrentCultureIgnoreCase ) )
+                    .FirstOrDefault();
+                if ( site == null )
+                {
+                    return false;
+                }
+
+                var binding = site.Bindings
+                    .AsQueryable()
+                    .Where( b => b.BindingInformation.Equals( bindingInformation, StringComparison.CurrentCultureIgnoreCase ) )
+                    .FirstOrDefault();
+                if ( binding == null )
+                {
+                    return false;
+                }
+
+                if ( !binding.CertificateHash.SequenceEqual( certificateHash ) )
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         #endregion
 
         #region Account Methods
@@ -458,7 +486,11 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <returns>A PKCS12 byte array.</returns>
         static public byte[] GetPkcs12Certificate( string password, byte[] privateKeyData, ICollection<byte[]> certificateData )
         {
-            var certPrivateKey = PrivateKeyFactory.CreateKey( privateKeyData );
+            //var certPrivateKey = PrivateKeyFactory.CreateKey( privateKeyData );
+            var privKeyObj = ( Asn1Sequence ) Asn1Object.FromByteArray( privateKeyData );
+            var rsa = RsaPrivateKeyStructure.GetInstance( privKeyObj );
+            AsymmetricKeyParameter certPrivateKey = new RsaPrivateCrtKeyParameters( rsa.Modulus, rsa.PublicExponent, rsa.PrivateExponent, rsa.Prime1, rsa.Prime2, rsa.Exponent1, rsa.Exponent2, rsa.Coefficient );
+
             List<X509CertificateEntry> certificates = new List<X509CertificateEntry>();
             var x509Parser = new X509CertificateParser();
             var pkStore = new Pkcs12Store();
@@ -498,12 +530,12 @@ namespace com.blueboxmoon.AcmeCertificate
         }
 
         /// <summary>
-        /// Renews a certificate and installs it in IIS.
+        /// Renews a certificate and returns the certificate data.
         /// </summary>
         /// <param name="groupId">The Id of the group that contains all the certificate information.</param>
         /// <param name="manualRun">If this is a manual run by the user, if true then bindings are initialized instead of only updated.</param>
         /// <param name="errorMessage">On output contains an error message if the certificate did not renew.</param>
-        static public Tuple<byte[], List<byte[]>> RenewCertificate( int groupId, bool manualRun, out string errorMessage )
+        static public CertificateData RenewCertificate( int groupId, out string errorMessage )
         {
             var rockContext = new RockContext();
             var group = new GroupService( rockContext ).Get( groupId );
@@ -515,60 +547,23 @@ namespace com.blueboxmoon.AcmeCertificate
             // Get the list of domains and the old certificate hash.
             //
             var domains = group.GetAttributeValues( "Domains" );
-            byte[] oldCertificate;
-            try
-            {
-                oldCertificate = Convert.FromBase64String( group.GetAttributeValue( "CertificateHash" ) );
-            }
-            catch
-            {
-                oldCertificate = null;
-            }
 
             //
             // Get the certificate private key and cert data.
             //
             var keyPair = AcmeService.GenerateKeyPair();
-            var privateKeyData = PrivateKeyInfoFactory.CreatePrivateKeyInfo( keyPair.Private ).ToAsn1Object().GetDerEncoded();
+            var privateKeyData = PrivateKeyInfoFactory.CreatePrivateKeyInfo( keyPair.Private ).ParsePrivateKey().GetEncoded();
             var csr = AcmeService.GenerateCSR( keyPair, domains );
-            var certs = RenewOfflineCertificate( groupId, manualRun, csr.ToAsn1Object().GetDerEncoded(), out errorMessage );
+            var certificateData = RenewCsrRequest( groupId, csr.ToAsn1Object().GetDerEncoded(), out errorMessage );
 
-            //
-            // If not offline mode, install the certificate and configure IIS.
-            //
-            if ( !account.OfflineMode )
+            if ( certificateData == null )
             {
-                //
-                // Set the friendly certificate name.
-                //
-                var friendlyName = string.Format( "{0} {1}", domains[0], DateTime.Now.ToString() );
-
-                //
-                // Attempt to install the private key and certificates.
-                //
-                var certificateHash = InstallCertificate( friendlyName, privateKeyData, keyPair.Private, certs );
-
-                //
-                // Install or update all bindings for this certificate.
-                //
-                var bindings = group
-                    .GetAttributeValue( "Bindings" )
-                    .Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries )
-                    .Select( s => new BindingData( s ) )
-                    .ToList();
-
-                ConfigureBindings( bindings, certificateHash, true );
-
-                //
-                // Everything worked, delete the old certificate it if we are configured to do so.
-                //
-                if ( group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ) && oldCertificate != null )
-                {
-                    RemoveCertificate( oldCertificate );
-                }
+                return null;
             }
 
-            return string.IsNullOrWhiteSpace( errorMessage ) ? new Tuple<byte[], List<byte[]>>( privateKeyData, certs ) : null;
+            certificateData.PrivateKey = string.Format( "-----BEGIN RSA PRIVATE KEY-----\n{0}\n-----END RSA PRIVATE KEY-----\n\n", Convert.ToBase64String( privateKeyData, Base64FormattingOptions.InsertLineBreaks ) );
+
+            return certificateData;
         }
 
         /// <summary>
@@ -577,7 +572,7 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="groupId">The Id of the group that contains all the certificate information.</param>
         /// <param name="manualRun">If this is a manual run by the user, if true then bindings are initialized instead of only updated.</param>
         /// <param name="errorMessage">On output contains an error message if the certificate did not renew.</param>
-        static public List<byte[]> RenewOfflineCertificate( int groupId, bool manualRun, byte[] csrData, out string errorMessage )
+        static public CertificateData RenewCsrRequest( int groupId, byte[] csrData, out string errorMessage )
         {
             var rockContext = new RockContext();
             var group = new GroupService( rockContext ).Get( groupId );
@@ -634,7 +629,123 @@ namespace com.blueboxmoon.AcmeCertificate
             group.SetAttributeValue( "CertificateHash", Convert.ToBase64String( certificateHash ) );
             group.SaveAttributeValues( rockContext );
 
-            return string.IsNullOrWhiteSpace( errorMessage ) ? certs : null;
+            if ( !string.IsNullOrWhiteSpace( errorMessage ) )
+            {
+                return null;
+            }
+
+            return new CertificateData
+            {
+                Id = groupId,
+                PrivateKey = string.Empty,
+                Certificates = certs
+                    .Select( c => Convert.ToBase64String( c, Base64FormattingOptions.InsertLineBreaks ) )
+                    .Select( c => string.Format( "-----BEGIN CERTIFICATE-----\n{0}\n-----END CERTIFICATE-----", c ) )
+                    .ToList(),
+                Hash = Convert.ToBase64String( certificateHash )
+            };
+        }
+
+        /// <summary>
+        /// Install the certificate data into the key store and configure IIS's bindings.
+        /// </summary>
+        /// <param name="certificate"></param>
+        static public void InstallCertificateData( CertificateData certificate, bool forceBindings = false )
+        {
+            byte[] privateKey;
+            List<byte[]> certificates = new List<byte[]>();
+            var rockContext = new RockContext();
+            var group = new GroupService( rockContext ).Get( certificate.Id );
+
+            group.LoadAttributes( rockContext );
+
+            //
+            // Parse the PEM private key back into a DER encoded byte array.
+            //
+            using ( var reader = new StringReader( certificate.PrivateKey ) )
+            {
+                privateKey = new Org.BouncyCastle.OpenSsl.PemReader( reader ).ReadPemObject().Content;
+            }
+
+            //
+            // Parse each PEM certificate back into a collection of DER encoded byte arrays.
+            //
+            foreach ( var c in certificate.Certificates )
+            {
+                using ( var reader = new StringReader( c ) )
+                {
+                    certificates.Add( new Org.BouncyCastle.OpenSsl.PemReader( reader ).ReadPemObject().Content );
+                }
+            }
+
+            //
+            // Set the friendly certificate name.
+            //
+            var friendlyName = string.Format( "{0} {1}", group.Name, DateTime.Now.ToString() );
+
+            //
+            // Attempt to install the private key and certificates.
+            //
+            var certificateHash = InstallCertificate( friendlyName, privateKey, certificates );
+
+            //
+            // Install or update all bindings for this certificate.
+            //
+            var bindings = group
+                .GetAttributeValue( "Bindings" )
+                .Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries )
+                .Select( s => new BindingData( s ) )
+                .ToList();
+
+            ConfigureBindings( bindings, certificateHash, forceBindings );
+        }
+
+        /// <summary>
+        /// Removes the certificate that matches the hash from the certificate store.
+        /// </summary>
+        /// <param name="certificateHash">The SHA-1 hash of the certificate to be removed.</param>
+        /// <returns>true if the certificate was removed.</returns>
+        static public bool RemoveCertificate( byte[] certificateHash )
+        {
+            //
+            // Open the certificate store.
+            //
+            var store = new X509Store( StoreName.My, StoreLocation.LocalMachine );
+            store.Open( OpenFlags.ReadWrite );
+
+            foreach ( var certificate in store.Certificates )
+            {
+                if ( certificate.GetCertHash().SequenceEqual( certificateHash ) )
+                {
+                    store.Remove( certificate );
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Install the certificate data into the key store and configure IIS's bindings.
+        /// </summary>
+        static public bool VerifyCertificateBindings( int groupId, string certificateHash )
+        {
+            var rockContext = new RockContext();
+            var group = new GroupService( rockContext ).Get( groupId );
+
+            group.LoadAttributes( rockContext );
+
+            //
+            // Install or update all bindings for this certificate.
+            //
+            var bindings = group
+                .GetAttributeValue( "Bindings" )
+                .Split( new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries )
+                .Select( s => new BindingData( s ) )
+                .ToList();
+
+            return VerifyBindings( bindings, Convert.FromBase64String( certificateHash ) );
         }
 
         #endregion

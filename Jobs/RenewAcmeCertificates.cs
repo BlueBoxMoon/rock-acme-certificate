@@ -67,18 +67,17 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
 
                         if ( !expireDate.HasValue || expireDate.Value < limitDate )
                         {
-                            Tuple<byte[], List<byte[]>> cert;
-
                             try
                             {
-                                cert = AcmeHelper.RenewCertificate( group.Id, false, out string errorMessage );
+                                var certificateData = AcmeHelper.RenewCertificate( group.Id, out string errorMessage );
 
-                                if ( cert == null )
+                                if ( certificateData == null )
                                 {
                                     errorMessages.Add( errorMessage );
                                 }
                                 else
                                 {
+                                    AcmeHelper.InstallCertificateData( certificateData );
                                     renewalCount += 1;
                                 }
                             }

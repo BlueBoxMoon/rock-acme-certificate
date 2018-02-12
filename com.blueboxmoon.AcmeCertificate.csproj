@@ -56,10 +56,17 @@
     <Reference Include="Rock">
       <HintPath>..\RockWeb\Bin\Rock.dll</HintPath>
     </Reference>
+    <Reference Include="Rock.Rest">
+      <HintPath>..\RockWeb\Bin\Rock.Rest.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Runtime.Caching" />
     <Reference Include="System.Web" />
+    <Reference Include="System.Web.Http, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\RockWeb\Bin\System.Web.Http.dll</HintPath>
+    </Reference>
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -73,6 +80,7 @@
     <Compile Include="AcmeService.cs" />
     <Compile Include="AcmeHelper.cs" />
     <Compile Include="BindingData.cs" />
+    <Compile Include="CertificateData.cs" />
     <Compile Include="Jobs\RenewAcmeCertificates.cs" />
     <Compile Include="JWK\JsonWebKey.cs" />
     <Compile Include="JWK\KeyType.cs" />
@@ -85,6 +93,7 @@
     <Compile Include="Rest\AccountStatus.cs" />
     <Compile Include="Rest\Authorization.cs" />
     <Compile Include="Rest\AuthorizationStatus.cs" />
+    <Compile Include="Rest\AcmeCertificateController.cs" />
     <Compile Include="Rest\Challenge.cs" />
     <Compile Include="Rest\ChallengeStatus.cs" />
     <Compile Include="Rest\Directory.cs" />

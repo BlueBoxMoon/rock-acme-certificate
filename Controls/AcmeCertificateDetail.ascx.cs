@@ -11,6 +11,7 @@ using Rock.Web.Cache;
 using Rock.Web.UI;
 
 using com.blueboxmoon.AcmeCertificate;
+using System.Web.UI;
 
 namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
 {
@@ -300,16 +301,204 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         {
             pnlDetail.Visible = false;
             pnlRenew.Visible = true;
-            pnlRenewOutput.Visible = false;
+            pnlRenewOutput.Visible = true;
             pnlRenewInput.Visible = true;
-            pnlRenewSuccess.Visible = false;
-            nbRenewNotOffline.Visible = false;
 
             var rockContext = new RockContext();
             var group = new GroupService( rockContext ).Get( PageParameter( "Id" ).AsInteger() );
+            var account = AcmeHelper.LoadAccountData();
 
             ltRenewTitle.Text = group.Name;
             tbRenewCSR.Text = string.Empty;
+
+            var script = string.Format( @"
+(function() {{
+    var oldCertificateHash = '';
+    var newCertificate = null;
+    var $renewStatus = $('#{2}');
+    var $status = null;
+    var $error = null;
+    var $progress = null;
+
+    function GetExistingHash()
+    {{
+        UpdateStatus('Determining configuration...');
+
+        $.get('/api/BBM_AcmeCertificate/Hash/{0}')
+            .done(function(data) {{
+                oldCertificateHash = data;
+                RenewCertificate();
+            }})
+            .fail(function(data, status, xhr) {{
+                ShowErrorObject(data);
+            }});
+    }}
+
+    function RenewCertificate()
+    {{
+        UpdateStatus('Renewing certificate...');
+
+        $.get('/api/BBM_AcmeCertificate/Renew/{0}')
+            .done(function(data) {{
+                newCertificate = data;
+                InstallCertificate();
+            }})
+            .fail(function(data, status, xhr) {{
+                ShowErrorObject(data);
+            }});
+    }}
+
+    function InstallCertificate()
+    {{
+        UpdateStatus('Installing Certificate...');
+
+        $.post('/api/BBM_AcmeCertificate/Install', newCertificate)
+            .done(function(data) {{
+                VerifyCertificate();
+            }})
+            .fail(function(data, status, xhr) {{
+                if (data.readyState == 4)
+                {{
+                    ShowErrorObject(data);
+                }}
+                else
+                {{
+                    VerifyCertificate();
+                }}
+            }});
+    }}
+
+    function VerifyCertificate()
+    {{
+        UpdateStatus('Verifying Certificate Installed Correctly (this may take a while)...');
+
+        $.get('/api/BBM_AcmeCertificate/Installed/{0}?certificateHash=' + encodeURIComponent(newCertificate.Hash))
+            .done(function(data) {{
+                if (data == true)
+                {{
+                    DeleteOldCertificate();
+                }}
+                else
+                {{
+                    ShowError('The certificate did not install correctly and no error was returned. Check the exception log for more details.');
+                }}
+            }})
+            .fail(function(data, status, xhr) {{
+                ShowErrorObject(data);
+            }});
+    }}
+
+    function DeleteOldCertificate()
+    {{
+        if ('{1}' != 'true')
+        {{
+            ShowSuccess();
+            return;
+        }}
+
+        UpdateStatus('Removing old certificate...');
+
+        $.ajax({{
+            url: '/api/BBM_AcmeCertificate/Hash/' + oldCertificateHash,
+            type: 'DELETE'
+            }})
+            .always(function() {{
+                ShowSuccess();
+            }});
+    }}
+
+    function ShowErrorObject(error)
+    {{
+        try
+        {{
+            var ex = JSON.parse(error.responseText);
+            ShowError('Message: ' + ex.Message + '\nException Message: ' + ex.ExceptionMessage + '\nException Type: ' + ex.ExceptionType + '\nStack Trace: ' + ex.StackTrace);
+        }}
+        catch (e)
+        {{
+            if (typeof(error) == 'string')
+            {{
+                ShowError(error);
+            }}
+            else
+            {{
+                ShowError(JSON.stringify(error));
+            }}
+        }}
+    }}
+
+    function ShowError(error)
+    {{
+        if ($error == null)
+        {{
+            $error = $('<pre class=""margin-t-md alert alert-danger""></pre>');
+            $error.appendTo($renewStatus);
+        }}
+
+        $error.text(error);
+
+        $progress.hide();
+        $('#{7}').show();
+    }}
+
+    function UpdateStatus(message)
+    {{
+        if ($status == null)
+        {{
+            $status = $('<pre class=""margin-t-md alert alert-info""></pre>');
+            $status.appendTo($renewStatus);
+        }}
+
+        var oldText = $status.text();
+        $status.text($status.text() + (oldText != '' ? '\n' : '') + message);
+    }}
+
+    function ShowSuccess()
+    {{
+        var $success = $('<pre class=""margin-t-md alert alert-success""></pre>');
+        $success.appendTo($renewStatus);
+
+        if ('{6}' == 'true')
+        {{
+            $success.text('Certificate has been renewed.');
+        }}
+        else
+        {{
+            $success.text('Certificate has been installed.');
+        }}
+
+        $('<pre class=""margin-t-md alert alert-info""></pre>').text(newCertificate.PrivateKey).appendTo($renewStatus);
+        for (var i = 0; i < newCertificate.Certificates.length; i++)
+        {{
+            $('<pre class=""margin-t-md alert alert-info""></pre>').text(newCertificate.Certificates[i]).appendTo($renewStatus);
+        }}
+
+        $progress.hide();
+        $('#{7}').show();
+    }}
+
+    $('#{5}').on('click', function () {{
+        $('#{3}').hide();
+        $('#{4}').show();
+
+        $progress = $('<div class=""progress progress-striped active""><div class=""progress-bar"" role=""progressbar"" aria-valuenow=""100"" aria-valuemin=""0"" aria-valuemax=""100"" style=""width: 100%""></div></div>');
+        $progress.appendTo($renewStatus);
+
+        GetExistingHash();
+    }});
+}})();
+",
+                PageParameter( "Id" ), // {0}
+                group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ).ToString().ToLower(), // {1}
+                divRenewStatus.ClientID, // {2}
+                pnlRenewInput.ClientID, // {3}
+                pnlRenewOutput.ClientID, // {4}
+                lbRequestCertificate.ClientID, // {5}
+                account.OfflineMode.ToString().ToLower(), // {6}
+                lbRenewDone.ClientID // {7}
+            );
+
+            ScriptManager.RegisterStartupScript( Page, GetType(), "initialize", script, true );
         }
 
         /// <summary>
@@ -580,134 +769,6 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
         protected void cbRenewCustomCSR_CheckedChanged( object sender, EventArgs e )
         {
-            if ( cbRenewCustomCSR.Checked )
-            {
-                tbRenewCSR.Visible = AcmeHelper.LoadAccountData().OfflineMode;
-                nbRenewNotOffline.Visible = !tbRenewCSR.Visible;
-                lbRequestCertificate.Enabled = !nbRenewNotOffline.Visible;
-            }
-            else
-            {
-                tbRenewCSR.Visible = false;
-                nbRenewNotOffline.Visible = false;
-                lbRequestCertificate.Enabled = true;
-            }
-        }
-
-        /// <summary>
-        /// Handles the Click event of the lbRequestCertificate control.
-        /// </summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
-        protected void lbRequestCertificate_Click( object sender, EventArgs e )
-        {
-            try
-            {
-                string errorMessage;
-
-                byte[] privateKeyData = null;
-                List<byte[]> certificateData;
-
-                if ( !string.IsNullOrWhiteSpace( tbRenewCSR.Text ) )
-                {
-                    string csrText = tbRenewCSR.Text
-                        .Replace( "-----BEGIN CERTIFICATE REQUEST-----", string.Empty )
-                        .Replace( "-----END CERTIFICATE REQUEST-----", string.Empty );
-                    byte[] csrData = Convert.FromBase64String( csrText );
-                    certificateData = AcmeHelper.RenewOfflineCertificate( PageParameter( "Id" ).AsInteger(), true, csrData, out errorMessage );
-                }
-                else
-                {
-                    //
-                    // Attempt to renew the certificate, new bindings will be created as needed.
-                    //
-                    var tuple = AcmeHelper.RenewCertificate( PageParameter( "Id" ).AsInteger(), true, out errorMessage );
-                    privateKeyData = tuple != null ? tuple.Item1 : null;
-                    certificateData = tuple != null ? tuple.Item2 : null;
-                }
-
-                if ( certificateData == null )
-                {
-                    nbRenewError.Text = errorMessage;
-                }
-                else
-                {
-                    pnlRenewInput.Visible = false;
-                    pnlRenewOutput.Visible = false;
-                    pnlRenewSuccess.Visible = false;
-
-                    if ( AcmeHelper.LoadAccountData().OfflineMode )
-                    {
-                        pnlRenewOutput.Visible = true;
-                        pnlRenewOutputPEM.Visible = true;
-                        pnlRenewOutputP12.Visible = false;
-
-                        rblRenewDownloadType.Items.Clear();
-                        rblRenewDownloadType.Items.Add( "PEM" );
-
-                        //
-                        // Prepare the PEM formatted certificates.
-                        //
-                        ltRenewPEM.Text = string.Empty;
-                        if ( privateKeyData != null )
-                        {
-                            ltRenewPEM.Text = string.Format( "-----BEGIN RSA PRIVATE KEY-----\n{0}\n-----END RSA PRIVATE KEY-----\n\n",
-                                Convert.ToBase64String( privateKeyData, Base64FormattingOptions.InsertLineBreaks ) ).ConvertCrLfToHtmlBr();
-                        }
-
-                        var certificates = certificateData
-                            .Select( c => Convert.ToBase64String( c, Base64FormattingOptions.InsertLineBreaks ) )
-                            .Select( c => string.Format( "-----BEGIN CERTIFICATE-----\n{0}\n-----END CERTIFICATE-----", c ) );
-                        ltRenewPEM.Text += string.Join( "\n\n", certificates ).ConvertCrLfToHtmlBr();
-
-                        if ( privateKeyData != null )
-                        {
-                            //
-                            // Prepare the PKCS12 formatted certificate.
-                            //
-                            var password = System.Web.Security.Membership.GeneratePassword( 8, 1 );
-                            var pkcs12 = AcmeHelper.GetPkcs12Certificate( password, privateKeyData, certificateData );
-
-                            //
-                            // Store the password protected PKCS12 data as a binary file.
-                            //
-                            var rockContext = new RockContext();
-                            var outputBinaryFile = new BinaryFile
-                            {
-                                IsTemporary = true,
-                                ContentStream = new System.IO.MemoryStream( pkcs12 ),
-                                FileName = "Certificate.p12",
-                                MimeType = "application/x-pkcs12",
-                                BinaryFileTypeId = new BinaryFileTypeService( rockContext ).Get( Rock.SystemGuid.BinaryFiletype.DEFAULT.AsGuid() ).Id
-                            };
-
-                            new BinaryFileService( rockContext ).Add( outputBinaryFile );
-
-                            rockContext.SaveChanges();
-
-                            //
-                            // Present a download link to the user.
-                            //
-                            ltRenewP12.Text = string.Format(
-                                "Your certificate has been encrypted with the password <code>{0}</code> and is ready for <a href='/GetFile.ashx?guid={1}'>download</a>.",
-                                password, outputBinaryFile.Guid );
-
-                            rblRenewDownloadType.Items.Add( "P12" );
-                        }
-
-                        rblRenewDownloadType.SelectedValue = "PEM";
-                    }
-                    else
-                    {
-                        pnlRenewSuccess.Visible = true;
-                    }
-                }
-            }
-            catch ( Exception ex )
-            {
-                ExceptionLogService.LogException( ex, Context );
-                throw;
-            }
         }
 
         /// <summary>
@@ -730,25 +791,6 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         {
             pnlRenew.Visible = false;
             NavigateToCurrentPage( new Dictionary<string, string> { { "Id", PageParameter( "Id" ) } } );
-        }
-
-        /// <summary>
-        /// Handles the SelectedIndexChanged event of the rblRenewDownloadType control.
-        /// </summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
-        protected void rblRenewDownloadType_SelectedIndexChanged( object sender, EventArgs e )
-        {
-            if ( rblRenewDownloadType.SelectedValue == "PEM" )
-            {
-                pnlRenewOutputPEM.Visible = true;
-                pnlRenewOutputP12.Visible = false;
-            }
-            else
-            {
-                pnlRenewOutputPEM.Visible = false;
-                pnlRenewOutputP12.Visible = true;
-            }
         }
 
         #endregion
