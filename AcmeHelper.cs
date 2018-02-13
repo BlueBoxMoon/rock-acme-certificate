@@ -642,7 +642,7 @@ namespace com.blueboxmoon.AcmeCertificate
                     .Select( c => Convert.ToBase64String( c, Base64FormattingOptions.InsertLineBreaks ) )
                     .Select( c => string.Format( "-----BEGIN CERTIFICATE-----\n{0}\n-----END CERTIFICATE-----", c ) )
                     .ToList(),
-                Hash = Convert.ToBase64String( certificateHash )
+                Hash = string.Join( string.Empty, certificateHash.Select( c => string.Format( "{0:X2}", c ) ) )
             };
         }
 
@@ -734,6 +734,12 @@ namespace com.blueboxmoon.AcmeCertificate
             var rockContext = new RockContext();
             var group = new GroupService( rockContext ).Get( groupId );
 
+            byte[] hash = new byte[certificateHash.Length / 2];
+            for ( int i = 0; i < certificateHash.Length; i += 2 )
+            {
+                hash[i / 2] = Convert.ToByte( certificateHash.Substring( i, 2 ), 16 );
+            }
+
             group.LoadAttributes( rockContext );
 
             //
@@ -745,7 +751,7 @@ namespace com.blueboxmoon.AcmeCertificate
                 .Select( s => new BindingData( s ) )
                 .ToList();
 
-            return VerifyBindings( bindings, Convert.FromBase64String( certificateHash ) );
+            return VerifyBindings( bindings, hash );
         }
 
         #endregion

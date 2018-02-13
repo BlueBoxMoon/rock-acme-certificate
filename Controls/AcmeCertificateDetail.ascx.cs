@@ -308,6 +308,11 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             var group = new GroupService( rockContext ).Get( PageParameter( "Id" ).AsInteger() );
             var account = AcmeHelper.LoadAccountData();
 
+            group.LoadAttributes( rockContext );
+
+            var removeOldCertificate = group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ).ToString().ToLower();
+            var offlineMode = account.OfflineMode.ToString().ToLower();
+
             ltRenewTitle.Text = group.Name;
             tbRenewCSR.Text = string.Empty;
 
@@ -338,10 +343,23 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
     {{
         UpdateStatus('Renewing certificate...');
 
-        $.get('/api/BBM_AcmeCertificate/Renew/{0}')
+        var url = '/api/BBM_AcmeCertificate/Renew/{0}';
+        if ($('#{8}').val() != '')
+        {{
+            url += '?csr=' + encodeURIComponent($('#{8}').val());
+        }}
+
+        $.get(url)
             .done(function(data) {{
                 newCertificate = data;
-                InstallCertificate();
+                if (newCertificate.PrivateKey)
+                {{
+                    InstallCertificate();
+                }}
+                else
+                {{
+                    ShowSuccess();
+                }}
             }})
             .fail(function(data, status, xhr) {{
                 ShowErrorObject(data);
@@ -372,7 +390,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
     {{
         UpdateStatus('Verifying Certificate Installed Correctly (this may take a while)...');
 
-        $.get('/api/BBM_AcmeCertificate/Installed/{0}?certificateHash=' + encodeURIComponent(newCertificate.Hash))
+        $.get('/api/BBM_AcmeCertificate/Installed/{0}/' + newCertificate.Hash)
             .done(function(data) {{
                 if (data == true)
                 {{
@@ -453,24 +471,34 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         $status.text($status.text() + (oldText != '' ? '\n' : '') + message);
     }}
 
+    function ShowExpander(title, content)
+    {{
+        var $panel = $('<div class=""panel panel-default margin-t-md""></div>');
+        var $heading = $('<div class=""panel-heading""></div>').appendTo($panel);
+        var $title = $('<h4 class=""panel-title""></h4>').appendTo($heading);
+        var $body = $('<div class=""panel-collapse collapse""><div class=""panel-body""><pre>' + content + '</pre></div></div>').appendTo($panel);
+        var $link = $('<a href=""#"">' + title + '</a>').on('click', function() {{ $body.collapse('toggle'); return false; }}).appendTo($title);
+
+        $panel.appendTo($renewStatus);
+    }}
+
     function ShowSuccess()
     {{
         var $success = $('<pre class=""margin-t-md alert alert-success""></pre>');
         $success.appendTo($renewStatus);
 
-        if ('{6}' == 'true')
+        var action = '{6}' != 'true' && newCertificate.PrivateKey ? 'installed' : 'renewed';
+
+        $success.text('Certificate has been ' + action + '. You can see the certificate data by expanding the panels below.');
+
+        if (newCertificate.PrivateKey)
         {{
-            $success.text('Certificate has been renewed.');
-        }}
-        else
-        {{
-            $success.text('Certificate has been installed.');
+            ShowExpander('Private Key', newCertificate.PrivateKey);
         }}
 
-        $('<pre class=""margin-t-md alert alert-info""></pre>').text(newCertificate.PrivateKey).appendTo($renewStatus);
         for (var i = 0; i < newCertificate.Certificates.length; i++)
         {{
-            $('<pre class=""margin-t-md alert alert-info""></pre>').text(newCertificate.Certificates[i]).appendTo($renewStatus);
+            ShowExpander(i == 0 ? 'Certificate' : 'Intermediate Certificate', newCertificate.Certificates[i]);
         }}
 
         $progress.hide();
@@ -488,14 +516,15 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
     }});
 }})();
 ",
-                PageParameter( "Id" ), // {0}
-                group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ).ToString().ToLower(), // {1}
-                divRenewStatus.ClientID, // {2}
-                pnlRenewInput.ClientID, // {3}
-                pnlRenewOutput.ClientID, // {4}
-                lbRequestCertificate.ClientID, // {5}
-                account.OfflineMode.ToString().ToLower(), // {6}
-                lbRenewDone.ClientID // {7}
+                PageParameter( "Id" ),          // {0}
+                removeOldCertificate,           // {1}
+                divRenewStatus.ClientID,        // {2}
+                pnlRenewInput.ClientID,         // {3}
+                pnlRenewOutput.ClientID,        // {4}
+                lbRequestCertificate.ClientID,  // {5}
+                offlineMode,                    // {6}
+                lbRenewDone.ClientID,           // {7}
+                tbRenewCSR.ClientID             // {8}
             );
 
             ScriptManager.RegisterStartupScript( Page, GetType(), "initialize", script, true );
@@ -761,15 +790,6 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         #endregion
 
         #region Renew Event Methods
-
-        /// <summary>
-        /// Handles the CheckChanged event of the cbRenewCustomCSR control.
-        /// </summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
-        protected void cbRenewCustomCSR_CheckedChanged( object sender, EventArgs e )
-        {
-        }
 
         /// <summary>
         /// Handles the Click event of the lbRenewCancel control.

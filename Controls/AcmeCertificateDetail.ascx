@@ -143,9 +143,12 @@
                 <asp:Panel ID="pnlRenewInput" runat="server">
                     <Rock:NotificationBox ID="nbRenewError" runat="server" NotificationBoxType="Danger" />
 
-                    <Rock:RockCheckBox ID="cbRenewCustomCSR" runat="server" Label="Custom CSR" Help="If you have a CSR already that you want to use you can provide it. Leave this off to have one automatically generated." OnCheckedChanged="cbRenewCustomCSR_CheckedChanged" AutoPostBack="true" CausesValidation="false" Enabled="false" />
+                    <div class="alert alert-info">
+                        If you have a custom CSR you may paste it below, otherwise leave the text box empty and we will automatically
+                        generate one for you. Using a custom CSR requires you to manually install the certificate after renewal.
+                    </div>
 
-                    <Rock:RockTextBox ID="tbRenewCSR" runat="server" TextMode="MultiLine" Rows="6" Label="CSR" Visible="false" />
+                    <Rock:RockTextBox ID="tbRenewCSR" runat="server" TextMode="MultiLine" Rows="6" Label="CSR" Visible="true" />
 
                     <div class="actions">
                         <a href="#" id="lbRequestCertificate" runat="server" class="btn btn-primary" onclick="return false;">Request Certificate</a>

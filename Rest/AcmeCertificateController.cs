@@ -75,7 +75,7 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
         /// <returns>true if the certificate is fully installed and working.</returns>
         [Authenticate, Secured]
         [HttpGet]
-        [System.Web.Http.Route( "api/BBM_AcmeCertificate/Installed/{certificateId}" )]
+        [System.Web.Http.Route( "api/BBM_AcmeCertificate/Installed/{certificateId}/{certificateHash}" )]
         public bool GetCertificateInstalled( int certificateId, string certificateHash )
         {
             return AcmeHelper.VerifyCertificateBindings( certificateId, certificateHash );
@@ -95,7 +95,14 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
 
             group.LoadAttributes();
 
-            return group.GetAttributeValue( "CertificateHash" );
+            var hash64 = group.GetAttributeValue( "CertificateHash" );
+
+            if ( string.IsNullOrWhiteSpace( hash64 ) )
+            {
+                return hash64;
+            }
+
+            return string.Join( string.Empty, Convert.FromBase64String( hash64 ).Select( c => string.Format( "{0:X2}", c ) ) );
         }
 
         /// <summary>
@@ -107,7 +114,13 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
         [System.Web.Http.Route( "api/BBM_AcmeCertificate/Hash/{certificateHash}" )]
         public void DeleteCertificateHash( string certificateHash )
         {
-            AcmeHelper.RemoveCertificate( Convert.FromBase64String( certificateHash ) );
+            byte[] hash = new byte[certificateHash.Length / 2];
+            for ( int i = 0; i < certificateHash.Length; i += 2 )
+            {
+                hash[i / 2] = Convert.ToByte( certificateHash.Substring( i, 2 ), 16 );
+            }
+
+            AcmeHelper.RemoveCertificate( hash );
         }
 
         #endregion

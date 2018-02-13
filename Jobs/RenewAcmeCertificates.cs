@@ -64,6 +64,15 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
                         group.LoadAttributes( rockContext );
 
                         var expireDate = group.GetAttributeValue( "Expires" ).AsDateTime();
+                        byte[] oldCertificateHash = null;
+                        try
+                        {
+                            oldCertificateHash = Convert.FromBase64String( group.GetAttributeValue( "CertificateHash" ) );
+                        }
+                        catch
+                        {
+                            // Intentionally left blank.
+                        }
 
                         if ( !expireDate.HasValue || expireDate.Value < limitDate )
                         {
@@ -79,6 +88,18 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
                                 {
                                     AcmeHelper.InstallCertificateData( certificateData );
                                     renewalCount += 1;
+
+                                    try
+                                    {
+                                        if ( group.GetAttributeValue( "RemoveOldCertificate" ).AsBoolean( false ) )
+                                        {
+                                            AcmeHelper.RemoveCertificate( oldCertificateHash );
+                                        }
+                                    }
+                                    catch
+                                    {
+                                        // Intentionally left blank.
+                                    }
                                 }
                             }
                             catch ( System.Exception ex )
