@@ -104,6 +104,7 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
                             }
                             catch ( System.Exception ex )
                             {
+                                ExceptionLogService.LogException( ex, HttpContext.Current );
                                 errorMessages.Add( ex.Message );
                             }
                         }
@@ -114,9 +115,18 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
                     }
                 }
 
-                context.Result = string.Format( "{0} {1} were renewed, {2} {3} were not due for renewal.",
-                    renewalCount, "certificate".PluralizeIf( renewalCount != 0 ),
-                    skipCount, "certificate".PluralizeIf( skipCount != 0 ) );
+                var result = string.Format( "{0} {1} were renewed, {2} {3} were not due for renewal.",
+                    renewalCount, "certificate".PluralizeIf( renewalCount != 1 ),
+                    skipCount, "certificate".PluralizeIf( skipCount != 1 ) );
+
+                if ( errorMessages.Any() )
+                {
+                    result += string.Format( "<br />{0} {1} occurred.<br />{2}",
+                        errorMessages.Count, "error".PluralizeIf( errorMessages.Count != 1 ),
+                        string.Join( "<br />", errorMessages ) );
+                }
+
+                context.Result = result;
             }
             catch ( System.Exception ex )
             {
