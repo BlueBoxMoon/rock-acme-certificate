@@ -418,7 +418,7 @@ namespace com.blueboxmoon.AcmeCertificate
             // Setup the web request.
             //
             var webRequest = ( HttpWebRequest ) WebRequest.Create( url );
-            webRequest.Timeout = 5000;
+            webRequest.Timeout = 20000;
             webRequest.Method = "POST";
 
             //
