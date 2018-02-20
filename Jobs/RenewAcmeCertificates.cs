@@ -33,19 +33,19 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
         {
             var account = AcmeHelper.LoadAccountData();
             JobDataMap dataMap = context.JobDetail.JobDataMap;
-            int? renewalPeriod = dataMap.GetString( "RenewalPeriod" ).AsIntegerOrNull();
+            int? renewalPeriod = dataMap.GetString( "RenewalPeriod" ).AsIntegerOrNull() ?? 30;
             int renewalCount = 0;
             int skipCount = 0;
             var errorMessages = new List<string>();
 
-            if ( !renewalPeriod.HasValue || renewalPeriod.Value < 1 )
+            if ( renewalPeriod.Value < 1 )
             {
-                throw new Exception( "Invalid setting for RenewalPeriod." );
+                throw new Exception( "Renewal Period must be at least 1 or more." );
             }
 
             if ( account.OfflineMode )
             {
-                throw new Exception( "Job cannot operate when certificate account is configured for Offline mode." );
+                throw new Exception( "Job cannot yet operate when certificate account is configured for Offline mode." );
             }
 
             try
@@ -115,16 +115,15 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
                     }
                 }
 
+                if ( errorMessages.Any() )
+                {
+                    throw new Exception( string.Format( "{0} {1} certificates failed to renew.",
+                        errorMessages.Count, "error".PluralizeIf( errorMessages.Count != 1 ) ) );
+                }
+
                 var result = string.Format( "{0} {1} were renewed, {2} {3} were not due for renewal.",
                     renewalCount, "certificate".PluralizeIf( renewalCount != 1 ),
                     skipCount, "certificate".PluralizeIf( skipCount != 1 ) );
-
-                if ( errorMessages.Any() )
-                {
-                    result += string.Format( "<br />{0} {1} occurred.<br />{2}",
-                        errorMessages.Count, "error".PluralizeIf( errorMessages.Count != 1 ),
-                        string.Join( "<br />", errorMessages ) );
-                }
 
                 context.Result = result;
             }

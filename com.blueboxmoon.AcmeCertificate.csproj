@@ -87,6 +87,7 @@
     <Compile Include="Migrations\001_SystemData.cs" />
     <Compile Include="Migrations\002_SetPageSecurity.cs" />
     <Compile Include="Migrations\003_AddCertExpiresAttribute.cs" />
+    <Compile Include="Migrations\004_AddRenewalJob.cs" />
     <Compile Include="Migrations\ExtendedMigration.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Rest\Account.cs" />
@@ -107,6 +108,7 @@
     <Compile Include="SystemGuid\BlockType.cs" />
     <Compile Include="SystemGuid\GroupType.cs" />
     <Compile Include="SystemGuid\Page.cs" />
+    <Compile Include="SystemGuid\ServiceJob.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
