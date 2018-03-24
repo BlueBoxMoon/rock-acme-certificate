@@ -1,0 +1,8 @@
+{
+  "Name": "Acme Certificate",
+  "Organization": "Blue Box Moon",
+  "DLLs": [
+    "com.blueboxmoon.AcmeCertificate.dll",
+    "BouncyCastle.Crypto.dll"
+  ],
+}
