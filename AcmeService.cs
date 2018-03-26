@@ -599,7 +599,7 @@ namespace com.blueboxmoon.AcmeCertificate
                 {
                     if ( challengeStatus.Error != null )
                     {
-                        throw new Exception( challengeStatus.Error.Detail );
+                        throw new Exception( string.Format( "Error trying to validate domain {0}: {1}", domain, challengeStatus.Error.Detail ) );
                     }
                     else
                     {
