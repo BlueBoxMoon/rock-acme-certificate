@@ -423,7 +423,7 @@ namespace com.blueboxmoon.AcmeCertificate
                     return false;
                 }
 
-                if ( !binding.CertificateHash.SequenceEqual( certificateHash ) )
+                if ( binding.CertificateHash == null || !binding.CertificateHash.SequenceEqual( certificateHash ) )
                 {
                     return false;
                 }
