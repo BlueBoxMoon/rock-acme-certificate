@@ -354,7 +354,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
                 newCertificate = data;
                 if (newCertificate.PrivateKey)
                 {{
-                    InstallCertificate();
+                    InstallCertificate(true);
                 }}
                 else
                 {{
@@ -366,7 +366,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             }});
     }}
 
-    function InstallCertificate()
+    function InstallCertificate(retry)
     {{
         UpdateStatus('Installing Certificate...');
 
@@ -377,7 +377,15 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             .fail(function(data, status, xhr) {{
                 if (data.readyState == 4)
                 {{
-                    ShowErrorObject(data);
+                    /* Sometimes the first attempt fails because we reconfigure bindings in IIS */
+                    if (retry === true)
+                    {{
+                        InstallCertificate(false);
+                    }}
+                    else
+                    {{
+                        ShowErrorObject(data);
+                    }}
                 }}
                 else
                 {{
