@@ -247,6 +247,48 @@ namespace com.blueboxmoon.AcmeCertificate
         }
 
         /// <summary>
+        /// Retrieves all existing binding information from IIS.
+        /// </summary>
+        /// <param name="siteName">If not null or empty string then returns the bindings only for the specified site.</param>
+        /// <returns>A list of BindingData objects that represent the IIS bindings.</returns>
+        static public List<BindingData> GetExistingBindings( string siteName )
+        {
+            var server = new ServerManager();
+            List<Microsoft.Web.Administration.Site> sites;
+
+            if ( string.IsNullOrWhiteSpace( siteName ) )
+            {
+                sites = server.Sites.ToList();
+            }
+            else
+            {
+                sites = server.Sites.Where( s => s.Name != null && s.Name.Equals( siteName, StringComparison.CurrentCultureIgnoreCase ) ).ToList();
+            }
+
+            var bindings = new List<BindingData>();
+
+            foreach ( var site in sites )
+            {
+                var siteBindings = site.Bindings
+                    .Select( b => b.BindingInformation.Split( ':' ) )
+                    .Where( b => b.Length >= 3 )
+                    .Select( b => new BindingData()
+                    {
+                        Site = site.Name,
+                        IPAddress = b[0] == "*" ? string.Empty : b[0],
+                        Port = b[1].AsInteger(),
+                        Domain = b[2]
+                    } )
+                    .Where( b => b.Port != 0 )
+                    .ToList();
+
+                bindings.AddRange( siteBindings );
+            }
+
+            return bindings;
+        }
+
+        /// <summary>
         /// Get a collection of all IPv4 addresses on the IIS server.
         /// </summary>
         /// <returns>Collection of strings that identify all IPv4 addresses on the server.</returns>

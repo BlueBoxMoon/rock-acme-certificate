@@ -99,7 +99,14 @@
                     </div>
                 </div>
 
-                <Rock:ValueList ID="vlDomains" runat="server" Label="Domains" FormGroupCssClass="domain-list" Help="Enter all the domains you want to be associated with this certificate." />
+                <div class="row">
+                    <div class="col-md-6">
+                        <Rock:ValueList ID="vlDomains" runat="server" Label="Domains" FormGroupCssClass="domain-list" Help="Enter all the domains you want to be associated with this certificate." />
+                    </div>
+                    <div class="col-md-6">
+                        <asp:LinkButton ID="lbRecommendConfig" runat="server" Text="Recommend Configuration" CssClass="btn btn-default" OnClick="lbRecommendConfig_Click" CausesValidation="false" />
+                    </div>
+                </div>
 
                 <Rock:RockControlWrapper ID="rcwDomains" runat="server" Label="Bindings" Help="Enter all the IIS bindings that you want to be updated to match this certificate.">
                     <Rock:Grid ID="gBindings" runat="server" CssClass="margin-b-md" RowItemText="Binding" AllowPaging="false" OnGridRebind="gBindings_GridRebind" OnRowSelected="gBindings_RowSelected">

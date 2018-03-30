@@ -795,6 +795,110 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             GridBind();
         }
 
+        /// <summary>
+        /// Handles the Click event of the lbRecommendConfig control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="EventArgs"/> instance containing the event data.</param>
+        protected void lbRecommendConfig_Click( object sender, EventArgs e )
+        {
+            var rockContext = new RockContext();
+            var bindings = AcmeHelper.GetExistingBindings( null );
+            string siteName = System.Web.Hosting.HostingEnvironment.SiteName;
+            var siteBindings = bindings.Where( b => siteName.Equals( b.Site, StringComparison.CurrentCultureIgnoreCase ) ).ToList();
+
+            //
+            // Get all the configured domain names in Rock.
+            // Skip any domains with "/" in case they configured poorly.
+            //
+            var domainNames = vlDomains.Value.SplitDelimitedValues().ToList();
+            var newDomainNames = new SiteDomainService( rockContext ).Queryable()
+                .Select( d => d.Domain )
+                .Where( d => !d.Contains( "/" ) )
+                .Where( d => !d.Equals( "localhost", StringComparison.CurrentCultureIgnoreCase ) )
+                .ToList();
+            domainNames.AddRange( newDomainNames.Where( d => !domainNames.Any( a => a.ToLower() == d.ToLower() ) ) );
+
+            //
+            // Check if we have a default binding (i.e. blank domain).
+            //
+            bool hasDefaultBinding = siteBindings.Any( b => string.IsNullOrWhiteSpace( b.Domain ) );
+
+            //
+            // Make a list of all the site bindings on port 80 without a 443 binding.
+            //
+            var needSecureBindings = siteBindings.Where( b => b.Port == 80 )
+                .Where( b => !siteBindings.Any( a => a.Site == b.Site && a.IPAddress == b.IPAddress && a.Domain == b.Domain && a.Port == 443 ) )
+                .ToList();
+
+            //
+            // Add new 443 bindings for any of those port 80-only bindings.
+            //
+            foreach ( var binding in needSecureBindings )
+            {
+                var newBinding = new BindingData
+                {
+                    Site = binding.Site,
+                    IPAddress = binding.IPAddress,
+                    Domain = binding.Domain,
+                    Port = 443
+                };
+
+                siteBindings.Add( newBinding );
+            }
+
+            //
+            // Add SSL bindings for any domains that we don't have bindings for.
+            //
+            if ( !hasDefaultBinding || true )
+            {
+                foreach ( var domain in domainNames )
+                {
+                    if ( siteBindings.Any( b => domain.Equals( b.Domain, StringComparison.CurrentCultureIgnoreCase ) ) )
+                    {
+                        continue;
+                    }
+
+                    var newBinding = new BindingData
+                    {
+                        Site = siteName,
+                        Domain = domain,
+                        Port = 443
+                    };
+
+                    var firstExistingBinding = siteBindings.FirstOrDefault();
+                    newBinding.IPAddress = firstExistingBinding != null ? firstExistingBinding.IPAddress : string.Empty;
+
+                    //
+                    // Make sure we would not be generating a binding that already exists in another site.
+                    //
+                    if ( bindings.Any( b => b.IPAddress == newBinding.IPAddress && b.Port == newBinding.Port && newBinding.Domain.Equals( b.Domain, StringComparison.CurrentCultureIgnoreCase ) ) )
+                    {
+                        continue;
+                    }
+
+                    siteBindings.Add( newBinding );
+                }
+            }
+
+            //
+            // Filter down to just the 443 bindings, thats all we care about.
+            //
+            siteBindings = siteBindings.Where( b => b.Port == 443 ).ToList();
+
+            //
+            // Add any new domain names.
+            //
+            vlDomains.Value = string.Join( "|", domainNames );
+
+            //
+            // Add any new bindings.
+            //
+            var newBindings = siteBindings.Where( b => !BindingsState.Any( a => a.Site.ToLower() == b.Site.ToLower() && a.Domain.ToLower() == b.Domain.ToLower() && a.IPAddress == b.IPAddress && a.Port == b.Port ) );
+            BindingsState.AddRange( newBindings );
+            GridBind();
+        }
+
         #endregion
 
         #region Renew Event Methods
