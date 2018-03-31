@@ -7,6 +7,7 @@ using System.Web.UI;
 using System.Web.UI.WebControls;
 
 using Rock.Web.UI;
+using com.blueboxmoon.AcmeCertificate;
 
 namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
 {
@@ -21,10 +22,8 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             {
                 if ( !string.IsNullOrWhiteSpace( PageParameter( "Token" ) ) )
                 {
-                    var cache = Rock.Web.Cache.RockMemoryCache.Default;
-
                     Response.Clear();
-                    Response.Write( cache[string.Format( "com.blueboxmoon.AcmeChallenge.{0}", PageParameter( "Token" ) )] );
+                    Response.Write( AcmeHelper.GetAuthorizationForToken( PageParameter( "Token" ) ) );
                     Response.Flush();
                     Response.SuppressContent = true;
                     HttpContext.Current.ApplicationInstance.CompleteRequest();

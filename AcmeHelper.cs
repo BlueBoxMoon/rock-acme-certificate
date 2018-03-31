@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
-using System.Runtime.Caching;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Xml;
@@ -22,11 +21,33 @@ using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.Pkcs;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto;
+using System.Collections.Concurrent;
 
 namespace com.blueboxmoon.AcmeCertificate
 {
     static public class AcmeHelper
     {
+        #region Private Fields
+
+        /// <summary>
+        /// Contains the authorizations for various tokens.
+        /// </summary>
+        private static ConcurrentDictionary<string, string> TokenAuthorizations = null;
+
+        #endregion
+
+        #region Class Initialization
+
+        /// <summary>
+        /// Do static initialization.
+        /// </summary>
+        static AcmeHelper()
+        {
+            TokenAuthorizations = new ConcurrentDictionary<string, string>();
+        }
+
+        #endregion
+
         #region Public IIS Methods
 
         /// <summary>
@@ -520,6 +541,16 @@ namespace com.blueboxmoon.AcmeCertificate
         #region Public Renewal Methods
 
         /// <summary>
+        /// Get the authorization response for the given token.
+        /// </summary>
+        /// <param name="token">The token provided by the Acme Authority.</param>
+        /// <returns>The authorization string.</returns>
+        static public string GetAuthorizationForToken( string token )
+        {
+            return TokenAuthorizations.ContainsKey( token ) ? TokenAuthorizations[token] : string.Empty;
+        }
+
+        /// <summary>
         /// Convert DER encoded private key data and certificate data into a PKCS12 container.
         /// </summary>
         /// <param name="password">The password to encrypt the container with, or null for no encryption.</param>
@@ -618,7 +649,6 @@ namespace com.blueboxmoon.AcmeCertificate
         {
             var rockContext = new RockContext();
             var group = new GroupService( rockContext ).Get( groupId );
-            var cache = Rock.Web.Cache.RockMemoryCache.Default;
             var account = LoadAccountData();
             var acme = new AcmeService( Convert.FromBase64String( account.Key ), account.TestMode );
 
@@ -636,11 +666,11 @@ namespace com.blueboxmoon.AcmeCertificate
             {
                 if ( authorization != null )
                 {
-                    cache.Add( string.Format( "com.blueboxmoon.AcmeChallenge.{0}", token.Token ), authorization, new CacheItemPolicy() );
+                    TokenAuthorizations.AddOrUpdate( token.Token, authorization, ( key, oldValue ) => authorization );
                 }
                 else
                 {
-                    cache.Remove( string.Format( "com.blueboxmoon.AcmeChallenge.{0}", token.Token ) );
+                    TokenAuthorizations.TryRemove( token.Token, out string oldValue );
                 }
             } );
 
