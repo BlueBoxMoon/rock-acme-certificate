@@ -850,7 +850,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             //
             // Add SSL bindings for any domains that we don't have bindings for.
             //
-            if ( !hasDefaultBinding || true )
+            if ( !hasDefaultBinding )
             {
                 foreach ( var domain in domainNames )
                 {
