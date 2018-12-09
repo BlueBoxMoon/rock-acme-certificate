@@ -52,7 +52,7 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
             {
                 using ( var rockContext = new RockContext() )
                 {
-                    var groupTypeId = GroupTypeCache.Read( SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
+                    var groupTypeId = GroupTypeCache.Get( SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
                     var limitDate = RockDateTime.Now.AddDays( renewalPeriod.Value );
 
                     var groups = new GroupService( rockContext ).Queryable()

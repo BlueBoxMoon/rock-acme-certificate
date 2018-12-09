@@ -507,7 +507,7 @@ namespace com.blueboxmoon.AcmeCertificate
         {
             try
             {
-                var attribute = Rock.Web.Cache.AttributeCache.Read( SystemGuid.Attribute.ACCOUNT.AsGuid() );
+                var attribute = Rock.Web.Cache.AttributeCache.Get( SystemGuid.Attribute.ACCOUNT.AsGuid() );
 
                 return JsonConvert.DeserializeObject<AccountData>( Rock.Security.Encryption.DecryptString( attribute.DefaultValue ) ) ?? new AccountData();
             }
@@ -525,14 +525,14 @@ namespace com.blueboxmoon.AcmeCertificate
         {
             using ( var rockContext = new RockContext() )
             {
-                var attributeId = Rock.Web.Cache.AttributeCache.Read( SystemGuid.Attribute.ACCOUNT.AsGuid() ).Id;
+                var attributeId = Rock.Web.Cache.AttributeCache.Get( SystemGuid.Attribute.ACCOUNT.AsGuid() ).Id;
 
                 var attribute = new AttributeService( rockContext ).Get( attributeId );
                 attribute.DefaultValue = Rock.Security.Encryption.EncryptString( JsonConvert.SerializeObject( account ) );
 
                 rockContext.SaveChanges();
 
-                Rock.Web.Cache.AttributeCache.Flush( attributeId );
+                Rock.Web.Cache.AttributeCache.Remove( attributeId );
             }
         }
 
