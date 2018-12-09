@@ -69,7 +69,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         {
             var rockContext = new RockContext();
 
-            var groupTypeId = GroupTypeCache.Read( com.blueboxmoon.AcmeCertificate.SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
+            var groupTypeId = GroupTypeCache.Get( com.blueboxmoon.AcmeCertificate.SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
 
             var groups = new GroupService( rockContext ).Queryable()
                 .Where( g => g.GroupTypeId == groupTypeId );
@@ -89,8 +89,8 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             groupList.ForEach( g => g.LoadAttributes( rockContext ) );
             var data = groupList.Select( g => new
             {
-                Id = g.Id,
-                Name = g.Name,
+                g.Id,
+                g.Name,
                 LastRenewed = g.GetAttributeValue( "LastRenewed" ),
                 Expires = g.GetAttributeValue( "Expires" ),
                 Domains = string.Join( "<br />", g.GetAttributeValues( "Domains" ) )

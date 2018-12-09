@@ -166,7 +166,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
         {
             var rockContext = new RockContext();
             var targetUrl = GetRedirectUrl();
-            var groupTypeId = GroupTypeCache.Read( com.blueboxmoon.AcmeCertificate.SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
+            var groupTypeId = GroupTypeCache.Get( com.blueboxmoon.AcmeCertificate.SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
             var bindings = new List<BindingData>();
 
             var groups = new GroupService( rockContext ).Queryable()
@@ -662,7 +662,7 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
             if ( group == null )
             {
                 group = new Group();
-                group.GroupTypeId = GroupTypeCache.Read( com.blueboxmoon.AcmeCertificate.SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
+                group.GroupTypeId = GroupTypeCache.Get( com.blueboxmoon.AcmeCertificate.SystemGuid.GroupType.ACME_CERTIFICATES ).Id;
 
                 groupService.Add( group );
             }
