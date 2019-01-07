@@ -670,7 +670,12 @@ namespace com.blueboxmoon.AcmeCertificate
                 }
                 else
                 {
-                    TokenAuthorizations.TryRemove( token.Token, out string oldValue );
+                    //
+                    // Removed 1/7/2019, Lets Encrypt calls multiple times and sometimes the token
+                    // gets removed before the final check hits, at which point we return an invalid
+                    // result which then causes problems.
+                    //
+                    //TokenAuthorizations.TryRemove( token.Token, out string oldValue );
                 }
             } );
 
