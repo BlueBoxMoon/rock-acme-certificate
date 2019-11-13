@@ -80,13 +80,10 @@ namespace RockWeb.Plugins.com_blueboxmoon.AcmeCertificate
                 return;
             }
 
-            var account = AcmeHelper.LoadAccountData();
-
-            account.Email = email;
+            var acme = new AcmeService( cbTestMode.Checked );
+            var account = acme.Register( email );
             account.TestMode = cbTestMode.Checked;
-
-            var acme = new AcmeService( account.TestMode );
-            acme.Register( email, hlTOS.NavigateUrl );
+            account.OfflineMode = cbOfflineMode.Checked;
             account.Key = Convert.ToBase64String( acme.RSA );
 
             AcmeHelper.SaveAccountData( account );

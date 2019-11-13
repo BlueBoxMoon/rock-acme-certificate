@@ -10,7 +10,13 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
         /// <summary>
         /// The TOS that the user must agree to in order to create a new account.
         /// </summary>
-        [JsonProperty( "terms-of-service" )]
+        [JsonProperty( "termsOfService" )]
         public string TermsOfService { get; set; }
+
+        /// <summary>
+        /// Gets or sets the website to direct the user to for more information.
+        /// </summary>
+        [JsonProperty( "website" )]
+        public string Website { get; set; }
     }
 }

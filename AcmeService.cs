@@ -152,7 +152,7 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="staging">If true the staging URL will be used instead of production.</param>
         public AcmeService( bool staging = true )
         {
-            DirectoryUrl = staging ? "https://acme-staging.api.letsencrypt.org/directory" : "https://acme-v01.api.letsencrypt.org/directory";
+            DirectoryUrl = staging ? "https://acme-staging-v02.api.letsencrypt.org/directory" : "https://acme-v02.api.letsencrypt.org/directory";
 
             var webRequest = ( HttpWebRequest ) WebRequest.Create( DirectoryUrl );
 
@@ -161,8 +161,6 @@ namespace com.blueboxmoon.AcmeCertificate
             {
                 throw new NotImplementedException( "TODO: Implement exception" );
             }
-
-            Nonce = headers["Replay-Nonce"];
         }
 
         /// <summary>
@@ -203,7 +201,7 @@ namespace com.blueboxmoon.AcmeCertificate
 
             if ( nonce == null )
             {
-                var request = WebRequest.Create( DirectoryUrl );
+                var request = WebRequest.Create( Directory.NewNonce );
                 request.Timeout = 5000;
                 request.Method = "HEAD";
 
@@ -223,24 +221,48 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="nonce">The nonce used to prevent replay attacks.</param>
         /// <param name="payload">The payload data that is to be sent.</param>
         /// <returns>An instance of the <see cref="Rest.Message"/> that contains all the message data to be transmitted.</returns>
-        protected Rest.Message ConstructMessage( string url, string nonce, object payload )
+        protected Rest.Message ConstructMessage( string url, string nonce, object payload, string kid )
         {
             //
             // Construct the header with the one-time nonce.
             // Note: this is referred to as "protected".
             //
-            var header = new
+            object header;
+
+            if ( kid.IsNotNullOrWhiteSpace() )
             {
-                alg = "RS256",
-                jwk = JWK,
-                url = url,
-                nonce = nonce
-            };
+                header = new
+                {
+                    alg = "RS256",
+                    kid,
+                    url,
+                    nonce
+                };
+            }
+            else
+            {
+                header = new
+                {
+                    alg = "RS256",
+                    jwk = JWK,
+                    url,
+                    nonce
+                };
+            }
 
             //
             // Base64 encode the payload and header.
             //
-            var payload64 = UrlBase64Encode( JsonConvert.SerializeObject( payload, Formatting.None ) );
+            string payload64;
+
+            if ( payload is string && ( string ) payload == string.Empty )
+            {
+                payload64 = string.Empty;
+            }
+            else
+            {
+                payload64 = UrlBase64Encode( JsonConvert.SerializeObject( payload, Formatting.None ) );
+            }
             var header64 = UrlBase64Encode( JsonConvert.SerializeObject( header, Formatting.None ) );
 
             //
@@ -315,6 +337,13 @@ namespace com.blueboxmoon.AcmeCertificate
                 if ( typeof( T ) == typeof( byte[] ) )
                 {
                     return ( T ) ( object ) response.GetResponseStream().ReadBytesToEnd();
+                }
+                else if ( typeof( T ) == typeof( string ) )
+                {
+                    using ( var reader = new StreamReader( response.GetResponseStream() ) )
+                    {
+                        return ( T ) ( object ) reader.ReadToEnd();
+                    }
                 }
 
                 using ( var reader = new StreamReader( response.GetResponseStream() ) )
@@ -395,9 +424,9 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="nonce">The nonce to use to authenticate the request.</param>
         /// <exception cref="AcmeException">Thrown when an Acme error response is received from the server.</exception>
         /// <returns>An instance of T</returns>
-        public T SendMessage<T>( string url, object payload, string nonce )
+        public T SendMessage<T>( string url, object payload, string nonce, string kid )
         {
-            return SendMessage<T>( url, payload, nonce, out WebHeaderCollection headers );
+            return SendMessage<T>( url, payload, nonce, kid, out _ );
         }
 
         /// <summary>
@@ -410,9 +439,9 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="headers">On return this will be populated with the response headers.</param>
         /// <exception cref="AcmeException">Thrown when an Acme error response is received from the server.</exception>
         /// <returns>An instance of T</returns>
-        public T SendMessage<T>( string url, object payload, string nonce, out WebHeaderCollection headers )
+        public T SendMessage<T>( string url, object payload, string nonce, string kid, out WebHeaderCollection headers )
         {
-            var message = ConstructMessage( url, nonce, payload );
+            var message = ConstructMessage( url, nonce, payload, kid );
 
             //
             // Setup the web request.
@@ -420,6 +449,7 @@ namespace com.blueboxmoon.AcmeCertificate
             var webRequest = ( HttpWebRequest ) WebRequest.Create( url );
             webRequest.Timeout = 20000;
             webRequest.Method = "POST";
+            webRequest.ContentType = "application/jose+json";
 
             //
             // Write the POST data.
@@ -462,93 +492,97 @@ namespace com.blueboxmoon.AcmeCertificate
         /// Register a new account.
         /// </summary>
         /// <param name="email">The e-mail address to be associated with this account.</param>
-        /// <param name="terms">The url of the Terms Of Service the user has agreed to.</param>
-        /// <returns>A <see cref="Rest.Account"/> instance that identifies the newly created account.</returns>
-        public Rest.Account Register( string email, string terms )
+        /// <returns>A partial <see cref="AccountData"/> instance that identifies the newly created account.</returns>
+        public AccountData Register( string email )
         {
             var payload = new
             {
-                resource = "new-reg",
                 contact = new string[] { string.Format( "mailto:{0}", email ) },
-                agreement = terms
+                termsOfServiceAgreed = true
             };
 
-            return SendMessage<Rest.Account>( Directory.NewReg, payload, GetNonce() );
+            var response = SendMessage<Rest.Account>( Directory.NewAccount, payload, GetNonce(), null, out var headers );
+
+            return new AccountData
+            {
+                AccountId = headers["Location"].ToString(),
+                OrdersUrl = response.Orders,
+                Email = email
+            };
+        }
+
+        /// <summary>
+        /// Upgrades the account.
+        /// </summary>
+        /// <param name="oldAccount">The old account.</param>
+        /// <returns>The new account data.</returns>
+        public AccountData UpgradeAccount( AccountData oldAccount )
+        {
+            var payload = new
+            {
+                contact = new string[] { string.Format( "mailto:{0}", oldAccount.Email ) },
+                termsOfServiceAgreed = true,
+                onlyReturnExisting = true
+            };
+
+            var response = SendMessage<Rest.Account>( Directory.NewAccount, payload, GetNonce(), null, out var headers );
+
+            return new AccountData
+            {
+                AccountId = headers["Location"].ToString(),
+                OrdersUrl = response.Orders,
+                Email = oldAccount.Email,
+                Key = oldAccount.Key,
+                TestMode = oldAccount.TestMode,
+                OfflineMode = oldAccount.OfflineMode
+            };
         }
 
         /// <summary>
         /// Requests authorization of a new domain name for use with our account.
         /// </summary>
-        /// <param name="domain">The domain name to be authorized.</param>
+        /// <param name="domains">The domain names to be authorized.</param>
         /// <returns>A <see cref="Rest.Authorization"/> instance that contains information on the authorization request.</returns>
-        public Rest.Authorization AuthorizeDomain( string domain )
+        public Rest.Order AuthorizeDomains( IEnumerable<string> domains, string accountId )
         {
             var payload = new
             {
-                resource = "new-authz",
-                identifier = new
+                identifiers = domains.Select( d => new Rest.Identifier
                 {
-                    type = "dns",
-                    value = domain
-                }
+                    Type = "dns",
+                    Value = d
+                } ).ToList()
             };
 
-            return SendMessage<Rest.Authorization>( Directory.NewAuthz, payload, GetNonce() );
-        }
-
-        /// <summary>
-        /// Send the challenge command to the server. This begins the process of checking
-        /// the domain verification by the challenge method chosen.
-        /// </summary>
-        /// <param name="challenge">The challenge to use when authorizing the domain.</param>
-        /// <returns>A new <see cref="Rest.Challenge"/> object that contains the status of this challenge.</returns>
-        public Rest.Challenge Challenge( Rest.Challenge challenge )
-        {
-            var payload = new
-            {
-                resource = "challenge",
-                type = challenge.Type,
-                keyAuthorization = challenge.Token + "." + Thumbprint
-            };
-
-            return SendMessage<Rest.Challenge>( challenge.Uri, payload, GetNonce() );
+            return SendMessage<Rest.Order>( Directory.NewOrder, payload, GetNonce(), accountId );
         }
 
         /// <summary>
         /// Create a CSR and submit it to the Acme server for signing. Returns the certificate chain.
         /// </summary>
-        /// <param name="domains">The list of domains that this certificate will be for. The first domain listed will be the CommonName.</param>
+        /// <param name="order">The order for the certificate request.</param>
         /// <param name="keyPair">The RSA key pair for signing the certificate request, this is the key that will be used in conjunction with the certificate.</param>
         /// <returns>A tuple whose first value is the private key data and whose second value is a list of certificates. Everything is encoded in DER format, the first certificate is the signed certificate.</returns>
-        public List<byte[]> GetCertificate( ICollection<string> domains, Pkcs10CertificationRequest csr )
+        public List<byte[]> GetCertificate( Rest.Order order, string accountId, Pkcs10CertificationRequest csr )
         {
             var payload = new
             {
-                resource = "new-cert",
                 csr = UrlBase64Encode( csr.GetDerEncoded() )
             };
-
-            var certificates = new List<X509Certificate>();
-            var certParser = new X509CertificateParser();
-            byte[] certData;
 
             //
             // Send the request and fetch the certificate data.
             //
-            certData = SendMessage<byte[]>( Directory.NewCert, payload, GetNonce(), out WebHeaderCollection headers );
-            certificates.Add( certParser.ReadCertificate( certData ) );
+            var updatedOrder = SendMessage<Rest.Order>( order.Finalize, payload, GetNonce(), accountId, out WebHeaderCollection headers );
 
-            //
-            // Fetch all the certificates in the chain.
-            //
-            foreach ( var link in headers.GetValues( "Link" ) )
+            var certData = GetRequest<byte[]>( updatedOrder.Certificate );
+
+            var certificates = new List<X509Certificate>();
+            var certParser = new X509CertificateParser();
+
+            foreach ( X509Certificate cert in certParser.ReadCertificates( certData ) )
             {
-                var match = System.Text.RegularExpressions.Regex.Match( link, "\\<(.*)\\>;rel=\"(.*)\"" );
-                if ( match.Success && match.Groups[2].Value == "up" )
-                {
-                    certData = GetRequest<byte[]>( match.Groups[1].Value );
-                    certificates.Add( certParser.ReadCertificate( certData ) );
-                }
+                certificates.Add( cert );
             }
 
             return certificates.Select( c => c.GetEncoded() ).ToList();
@@ -559,11 +593,19 @@ namespace com.blueboxmoon.AcmeCertificate
         /// </summary>
         /// <param name="domains">A collection of domain names to validate.</param>
         /// <param name="prepareChallenge">The callback that will be called for each domain challenge to be processed.</param>
-        public void ValidateDomains( ICollection<string> domains, Action<string, Rest.Challenge, string> prepareChallenge )
+        public Rest.Order ValidateDomains( ICollection<string> domains, string accountId, Action<string, Rest.Challenge, string> prepareChallenge )
         {
-            foreach ( var domain in domains )
+            var order = AuthorizeDomains( domains, accountId );
+
+            foreach ( var authorizationUrl in order.Authorizations )
             {
-                var authorization = AuthorizeDomain( domain );
+                var authorization = SendMessage<Rest.Authorization>( authorizationUrl, string.Empty, GetNonce(), accountId );
+
+                if ( authorization.Status == "valid" )
+                {
+                    continue;
+                }
+
                 var challenge = authorization.Challenges.FirstOrDefault( c => c.Type == "http-01" );
 
                 if ( challenge == null )
@@ -571,9 +613,9 @@ namespace com.blueboxmoon.AcmeCertificate
                     throw new KeyNotFoundException( "Could not find challenge of type 'http-01'." );
                 }
 
-                prepareChallenge( domain, challenge, challenge.Token + "." + Thumbprint );
+                prepareChallenge( authorization.Identifier.Value, challenge, challenge.Token + "." + Thumbprint );
 
-                var challengeStatus = Challenge( challenge );
+                challenge = SendMessage<Rest.Challenge>( challenge.Url, new { }, GetNonce(), accountId );
 
                 var endDateTime = DateTime.Now.AddSeconds( 15 );
                 int waitTime = 1000;
@@ -582,31 +624,35 @@ namespace com.blueboxmoon.AcmeCertificate
                 {
                     System.Threading.Thread.Sleep( waitTime );
                     waitTime += 1000;
-                    challengeStatus = GetRequest<Rest.Challenge>( challengeStatus.Uri );
+                    authorization = SendMessage<Rest.Authorization>( authorizationUrl, string.Empty, GetNonce(), accountId );
 
-                    prepareChallenge( domain, challenge, null );
-                } while ( DateTime.Now < endDateTime && challengeStatus.Status == "pending" );
+                } while ( DateTime.Now < endDateTime && authorization.Status == "pending" );
 
-                if ( challengeStatus.Status == "valid" )
+                prepareChallenge( authorization.Identifier.Value, challenge, null );
+
+                if ( authorization.Status == "valid" )
                 {
                     continue;
                 }
-                else if ( challengeStatus.Status == "pending" )
+                else if ( authorization.Status == "pending" )
                 {
-                    throw new TimeoutException( string.Format( "Timeout while trying to validate domain {0}", domain ) );
+                    throw new TimeoutException( string.Format( "Timeout while trying to validate domain {0}", authorization.Identifier.Value ) );
                 }
                 else
                 {
-                    if ( challengeStatus.Error != null )
+                    var challengeError = authorization.Challenges.Where( a => a.Error != null ).FirstOrDefault();
+                    if ( challengeError != null )
                     {
-                        throw new Exception( string.Format( "Error trying to validate domain {0}: {1}", domain, challengeStatus.Error.Detail ) );
+                        throw new Exception( string.Format( "Error trying to validate domain {0}: {1}", authorization.Identifier.Value, challengeError.Error.Detail ) );
                     }
                     else
                     {
-                        throw new Exception( string.Format( "Unknown error trying to validate domain {0}", domain ) );
+                        throw new Exception( string.Format( "Unknown error trying to validate domain {0}", authorization.Identifier.Value ) );
                     }
                 }
             }
+
+            return order;
         }
 
         /// <summary>

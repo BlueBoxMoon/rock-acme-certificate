@@ -612,7 +612,6 @@ namespace com.blueboxmoon.AcmeCertificate
         {
             var rockContext = new RockContext();
             var group = new GroupService( rockContext ).Get( groupId );
-            var account = LoadAccountData();
 
             group.LoadAttributes( rockContext );
 
@@ -652,6 +651,12 @@ namespace com.blueboxmoon.AcmeCertificate
             var account = LoadAccountData();
             var acme = new AcmeService( Convert.FromBase64String( account.Key ), account.TestMode );
 
+            if ( account.AccountId.IsNullOrWhiteSpace() )
+            {
+                account = acme.UpgradeAccount( account );
+                SaveAccountData( account );
+            }
+
             errorMessage = string.Empty;
 
             group.LoadAttributes( rockContext );
@@ -662,7 +667,7 @@ namespace com.blueboxmoon.AcmeCertificate
             //
             // Attempt to validate all the domains.
             //
-            acme.ValidateDomains( domains, ( domain, token, authorization ) =>
+            var order = acme.ValidateDomains( domains, account.AccountId, ( domain, token, authorization ) =>
             {
                 if ( authorization != null )
                 {
@@ -670,19 +675,14 @@ namespace com.blueboxmoon.AcmeCertificate
                 }
                 else
                 {
-                    //
-                    // Removed 1/7/2019, Lets Encrypt calls multiple times and sometimes the token
-                    // gets removed before the final check hits, at which point we return an invalid
-                    // result which then causes problems.
-                    //
-                    //TokenAuthorizations.TryRemove( token.Token, out string oldValue );
+                    TokenAuthorizations.TryRemove( token.Token, out string oldValue );
                 }
             } );
 
             //
             // Get the certificate.
             //
-            var certs = acme.GetCertificate( domains, csr );
+            var certs = acme.GetCertificate( order, account.AccountId, csr );
 
             //
             // Set the date and time we last renewed and the friendly certificate name.

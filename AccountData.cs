@@ -12,6 +12,16 @@
         public string Email { get; set; }
 
         /// <summary>
+        /// Gets or sets the account identifier.
+        /// </summary>
+        public string AccountId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the orders URL.
+        /// </summary>
+        public string OrdersUrl { get; set; }
+
+        /// <summary>
         /// The base64 encoded account private key.
         /// </summary>
         public string Key { get; set; }

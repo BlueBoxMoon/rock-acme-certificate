@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 using Newtonsoft.Json;
 
@@ -23,10 +24,10 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
         public string Status { get; set; }
 
         /// <summary>
-        /// The URI for interacting with this specific challenge.
+        /// The URL for interacting with this specific challenge.
         /// </summary>
-        [JsonProperty( "uri" )]
-        public string Uri { get; set; }
+        [JsonProperty( "url" )]
+        public string Url { get; set; }
 
         /// <summary>
         /// The server-token provided for this challenge.
@@ -34,17 +35,8 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
         [JsonProperty( "token" )]
         public string Token { get; set; }
 
-        /// <summary>
-        /// The user-provided authorization for this challenge.
-        /// </summary>
-        [JsonProperty( "keyAuthorization" )]
-        public string KeyAuthorization { get; set; }
-
-        /// <summary>
-        /// ValidationRecords that indicate what was specifically validated.
-        /// </summary>
-        [JsonProperty( "validationRecord" )]
-        public List<ValidationRecord> ValidationRecord { get; set; }
+        [JsonProperty( "validated" )]
+        public DateTime? Validated { get; set; }
 
         /// <summary>
         /// Contains any error that may have occurred while trying to validate.

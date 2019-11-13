@@ -87,6 +87,7 @@
     <Compile Include="AcmeService.cs" />
     <Compile Include="AcmeHelper.cs" />
     <Compile Include="BindingData.cs" />
+    <Compile Include="Bootstrap.cs" />
     <Compile Include="CertificateData.cs" />
     <Compile Include="Jobs\RenewAcmeCertificates.cs" />
     <Compile Include="JWK\JsonWebKey.cs" />
@@ -98,18 +99,15 @@
     <Compile Include="Migrations\ExtendedMigration.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Rest\Account.cs" />
-    <Compile Include="Rest\AccountStatus.cs" />
     <Compile Include="Rest\Authorization.cs" />
-    <Compile Include="Rest\AuthorizationStatus.cs" />
     <Compile Include="Rest\AcmeCertificateController.cs" />
     <Compile Include="Rest\Challenge.cs" />
-    <Compile Include="Rest\ChallengeStatus.cs" />
     <Compile Include="Rest\Directory.cs" />
     <Compile Include="Rest\DirectoryMeta.cs" />
     <Compile Include="Rest\Error.cs" />
     <Compile Include="Rest\Identifier.cs" />
     <Compile Include="Rest\Message.cs" />
-    <Compile Include="Rest\ValidationRecord.cs" />
+    <Compile Include="Rest\Order.cs" />
     <Compile Include="SystemGuid\Attribute.cs" />
     <Compile Include="SystemGuid\Block.cs" />
     <Compile Include="SystemGuid\BlockType.cs" />

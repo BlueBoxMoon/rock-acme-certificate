@@ -10,31 +10,31 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
         /// <summary>
         /// The endpoint to use for new registrations.
         /// </summary>
-        [JsonProperty( "new-reg" )]
-        public string NewReg { get; set; }
+        [JsonProperty( "newAccount" )]
+        public string NewAccount { get; set; }
 
         /// <summary>
         /// The endpoint to use when changing the private key of an existing account.
         /// </summary>
-        [JsonProperty( "key-change" )]
+        [JsonProperty( "keyChange" )]
         public string KeyChange { get; set; }
 
         /// <summary>
-        /// The endpoint to use when requesting authorization of a domain.
+        /// The endpoint to use when requesting a new Nonce.
         /// </summary>
-        [JsonProperty( "new-authz" )]
-        public string NewAuthz { get; set; }
+        [JsonProperty( "newNonce" )]
+        public string NewNonce { get; set; }
 
         /// <summary>
         /// The endpoint to use when requesting a certificate be issued.
         /// </summary>
-        [JsonProperty( "new-cert" )]
-        public string NewCert { get; set; }
+        [JsonProperty( "newOrder" )]
+        public string NewOrder { get; set; }
 
         /// <summary>
         /// The endpoint to use when requesting that a certificate be revoked for some reason.
         /// </summary>
-        [JsonProperty( "revoke-cert" )]
+        [JsonProperty( "revokeCert" )]
         public string RevokeCert { get; set; }
 
         /// <summary>

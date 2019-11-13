@@ -34,13 +34,5 @@ namespace com.blueboxmoon.AcmeCertificate.Rest
         /// </summary>
         [JsonProperty( "challenges" )]
         public List<Challenge> Challenges { get; set; }
-
-        /// <summary>
-        /// The combinations of challenges that must be completed. Only one of the primary
-        /// array must be completed, but the secondary arrays may point to more than one
-        /// challenge.
-        /// </summary>
-        [JsonProperty( "combinations" )]
-        public List<List<int>> Combinations { get; set; }
     }
 }
