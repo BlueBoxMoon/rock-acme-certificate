@@ -96,6 +96,7 @@
     <Compile Include="Migrations\002_SetPageSecurity.cs" />
     <Compile Include="Migrations\003_AddCertExpiresAttribute.cs" />
     <Compile Include="Migrations\004_AddRenewalJob.cs" />
+    <Compile Include="Migrations\005_EnableGlobalRoute.cs" />
     <Compile Include="Migrations\ExtendedMigration.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Rest\Account.cs" />
