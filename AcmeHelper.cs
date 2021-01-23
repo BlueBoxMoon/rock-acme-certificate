@@ -10,6 +10,7 @@ using System.Xml;
 
 using Rock;
 using Rock.Data;
+using Rock.Logging;
 using Rock.Model;
 
 using Microsoft.Web.Administration;
@@ -27,6 +28,15 @@ namespace com.blueboxmoon.AcmeCertificate
 {
     static public class AcmeHelper
     {
+        #region Constants
+
+        /// <summary>
+        /// The logging domain used by this plugin.
+        /// </summary>
+        public const string LoggingDomain = "Plugin-AcmeCertificate";
+
+        #endregion
+
         #region Private Fields
 
         /// <summary>
@@ -547,7 +557,14 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <returns>The authorization string.</returns>
         static public string GetAuthorizationForToken( string token )
         {
-            return TokenAuthorizations.ContainsKey( token ) ? TokenAuthorizations[token] : string.Empty;
+            if ( TokenAuthorizations.TryGetValue( token, out var authorization ) )
+            {
+                return authorization;
+            }
+            else
+            {
+                return string.Empty;
+            }
         }
 
         /// <summary>
@@ -664,6 +681,8 @@ namespace com.blueboxmoon.AcmeCertificate
             var domains = group.GetAttributeValues( "Domains" );
             var csr = new Pkcs10CertificationRequest( csrData );
 
+            RockLogger.Log.Information( LoggingDomain, $"Preparing to validate domains {string.Join( ",", domains )}" );
+
             //
             // Attempt to validate all the domains.
             //
@@ -671,10 +690,12 @@ namespace com.blueboxmoon.AcmeCertificate
             {
                 if ( authorization != null )
                 {
+                    RockLogger.Log.Information( LoggingDomain, $"Setting domain '{domain}' response '{authorization}' for challenge '{token.Token}'" );
                     TokenAuthorizations.AddOrUpdate( token.Token, authorization, ( key, oldValue ) => authorization );
                 }
                 else
                 {
+                    RockLogger.Log.Information( LoggingDomain, $"Cleaning up '{domain}' challenge '{token.Token}'" );
                     TokenAuthorizations.TryRemove( token.Token, out string oldValue );
                 }
             } );

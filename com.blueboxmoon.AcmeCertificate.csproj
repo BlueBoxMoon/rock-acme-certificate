@@ -44,12 +44,20 @@
       <HintPath>..\RockWeb\Bin\EntityFramework.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Microsoft.Owin">
+      <HintPath>..\RockWeb\Bin\Microsoft.Owin.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Microsoft.Web.Administration, Version=7.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Web.Administration.7.0.0.0\lib\net20\Microsoft.Web.Administration.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\RockWeb\Bin\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Owin">
+      <HintPath>..\RockWeb\Bin\Owin.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Quartz, Version=2.0.0.100, Culture=neutral, processorArchitecture=MSIL">
@@ -83,6 +91,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AccountData.cs" />
+    <Compile Include="AcmeCertificateMiddleware.cs" />
     <Compile Include="AcmeException.cs" />
     <Compile Include="AcmeService.cs" />
     <Compile Include="AcmeHelper.cs" />
@@ -97,7 +106,9 @@
     <Compile Include="Migrations\003_AddCertExpiresAttribute.cs" />
     <Compile Include="Migrations\004_AddRenewalJob.cs" />
     <Compile Include="Migrations\005_EnableGlobalRoute.cs" />
+    <Compile Include="Migrations\006_AddLoggingDomain.cs" />
     <Compile Include="Migrations\ExtendedMigration.cs" />
+    <Compile Include="OwinStartup.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Rest\Account.cs" />
     <Compile Include="Rest\Authorization.cs" />
@@ -112,6 +123,7 @@
     <Compile Include="SystemGuid\Attribute.cs" />
     <Compile Include="SystemGuid\Block.cs" />
     <Compile Include="SystemGuid\BlockType.cs" />
+    <Compile Include="SystemGuid\DefinedValue.cs" />
     <Compile Include="SystemGuid\GroupType.cs" />
     <Compile Include="SystemGuid\Page.cs" />
     <Compile Include="SystemGuid\ServiceJob.cs" />

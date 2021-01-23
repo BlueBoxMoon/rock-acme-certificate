@@ -617,7 +617,7 @@ namespace com.blueboxmoon.AcmeCertificate
 
                 challenge = SendMessage<Rest.Challenge>( challenge.Url, new { }, GetNonce(), accountId );
 
-                var endDateTime = DateTime.Now.AddSeconds( 15 );
+                var endDateTime = DateTime.Now.AddSeconds( 90 );
                 int waitTime = 1000;
 
                 do
