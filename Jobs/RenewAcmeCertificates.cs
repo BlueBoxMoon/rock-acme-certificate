@@ -7,6 +7,7 @@ using Quartz;
 using Rock;
 using Rock.Attribute;
 using Rock.Data;
+using Rock.Jobs;
 using Rock.Model;
 using Rock.Web.Cache;
 
@@ -17,7 +18,7 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
     /// </summary>
     [IntegerField( "Renewal Period", "The number of days before a certificate expires to begin attempting to renew it.", true, 30, order: 0 )]
     [DisallowConcurrentExecution]
-    public class RenewAcmeCertificates : IJob
+    public class RenewAcmeCertificates : RockJob
     {
         /// <summary> 
         /// Empty constructor for job initialization
@@ -29,11 +30,10 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
         /// <summary>
         /// Job to automatically renew Acme SSL Certificates.
         /// </summary>
-        public virtual void Execute( IJobExecutionContext context )
+        public override void Execute()
         {
             var account = AcmeHelper.LoadAccountData();
-            JobDataMap dataMap = context.JobDetail.JobDataMap;
-            int? renewalPeriod = dataMap.GetString( "RenewalPeriod" ).AsIntegerOrNull() ?? 30;
+            int? renewalPeriod = GetAttributeValue( "RenewalPeriod" ).AsIntegerOrNull() ?? 30;
             int renewalCount = 0;
             int skipCount = 0;
             var errorMessages = new List<string>();
@@ -125,7 +125,7 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
                     renewalCount, "certificate".PluralizeIf( renewalCount != 1 ),
                     skipCount, "certificate".PluralizeIf( skipCount != 1 ) );
 
-                context.Result = result;
+                Result = result;
             }
             catch ( System.Exception ex )
             {
