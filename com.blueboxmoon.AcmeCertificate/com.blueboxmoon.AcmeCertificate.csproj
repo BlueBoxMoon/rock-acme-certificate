@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RockWebPath>..\..\Rock\RockWeb</RockWebPath>
+    <AdditionalAssembliesToCopy>BouncyCastle.Crypto.dll</AdditionalAssembliesToCopy>
+    <CopyToRockWeb>true</CopyToRockWeb>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle" Version="1.8.1" />
+    <PackageReference Include="Microsoft.Owin" Version="4.2.2" />
+    <PackageReference Include="Microsoft.Web.Administration" Version="7.0.0" />
+    <PackageReference Include="SparkDevNetwork.Rock.Build.Tasks" Version="1.0.12" />
+    <PackageReference Include="SparkDevNetwork.Rock.Analyzers" Version="1.0.12" />
+    <PackageReference Include="RockRMS.Rock" Version="19.4.4" />
+    <PackageReference Include="RockRMS.Rock.Blocks" Version="19.4.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<Reference Include="System.Web" />
+  </ItemGroup>
+
+</Project>

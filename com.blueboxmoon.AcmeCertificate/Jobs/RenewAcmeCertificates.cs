@@ -1,8 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
-using Quartz;
 
 using Rock;
 using Rock.Attribute;
@@ -17,7 +16,6 @@ namespace com.blueboxmoon.AcmeCertificate.Jobs
     /// Job to automatically renew Acme SSL Certificates.
     /// </summary>
     [IntegerField( "Renewal Period", "The number of days before a certificate expires to begin attempting to renew it.", true, 30, order: 0 )]
-    [DisallowConcurrentExecution]
     public class RenewAcmeCertificates : RockJob
     {
         /// <summary> 

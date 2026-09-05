@@ -1,7 +1,0 @@
-{
-  "Name": "Acme Certificate",
-  "Organization": "Blue Box Moon",
-  "DLLs": [
-    "BouncyCastle.Crypto.dll"
-  ]
-}
