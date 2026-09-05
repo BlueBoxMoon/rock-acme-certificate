@@ -1,0 +1,198 @@
+<template>
+    <Panel title="Account" titleIconCssClass="fa fa-user-secret">
+        <!-- Read-only account details -->
+        <div v-if="mode === 'view'">
+            <div class="row">
+                <div class="col-md-6">
+                    <StaticFormControl label="Account Email" :modelValue="bag.email ?? ''" />
+                </div>
+                <div class="col-md-6">
+                    <StaticFormControl label="Test Mode" :modelValue="bag.testMode ? 'True' : 'False'" />
+                </div>
+            </div>
+
+            <hr class="margin-t-none" />
+
+            <div class="row">
+                <div class="col-md-6">
+                    <StaticFormControl label="Offline Mode" :modelValue="bag.offlineMode ? 'True' : 'False'" />
+                </div>
+            </div>
+
+            <div class="actions">
+                <RockButton v-if="bag.isRegistered" btnType="primary" @click="onEditClick">Edit</RockButton>
+                <RockButton :btnType="bag.isRegistered ? 'default' : 'primary'" @click="onRegisterClick">Register</RockButton>
+            </div>
+        </div>
+
+        <!-- Registration form -->
+        <RockForm v-else-if="mode === 'register'" @submit="onRegisterSave">
+            <NotificationBox v-if="registration.hasExistingAccount" :alertType="AlertType.Warning">
+                You already have an account setup. If you register again you will no longer be able to renew your
+                existing certificates. You should only need to re-register as a last resort if things are not working.
+            </NotificationBox>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <EmailBox v-model="registerEmail" label="Email" rules="required" />
+                </div>
+                <div class="col-md-6">
+                    <CheckBox v-model="registerTestMode"
+                              label="Test Mode"
+                              help="Uses the testing server which generates test certificates. Only used for debugging and testing purposes." />
+                </div>
+            </div>
+
+            <NotificationBox :alertType="agreeToTerms || !tosError ? AlertType.Info : AlertType.Danger">
+                You must read and agree to the terms of service located at
+                <a :href="registration.termsOfServiceUrl ?? '#'" target="_blank" rel="noopener noreferrer">{{ registration.termsOfServiceUrl }}</a>.
+            </NotificationBox>
+
+            <CheckBox v-model="agreeToTerms" label="Agree to Terms Of Service" />
+
+            <div class="actions">
+                <RockButton btnType="primary" type="submit" :disabled="isSaving">Save</RockButton>
+                <RockButton btnType="link" :disabled="isSaving" @click="onCancel">Cancel</RockButton>
+            </div>
+        </RockForm>
+
+        <!-- Edit form -->
+        <RockForm v-else @submit="onEditSave">
+            <div class="row">
+                <div class="col-md-6">
+                    <CheckBox v-model="editOfflineMode"
+                              label="Offline Mode"
+                              help="If your Rock installation does not have access to install certificates then enable this mode and the certificate will be generated and provided to you for manual installation." />
+                </div>
+            </div>
+
+            <div class="actions">
+                <RockButton btnType="primary" type="submit" :disabled="isSaving">Save</RockButton>
+                <RockButton btnType="link" :disabled="isSaving" @click="onCancel">Cancel</RockButton>
+            </div>
+        </RockForm>
+    </Panel>
+</template>
+
+<script setup lang="ts">
+    import { onBeforeUnmount, reactive, ref } from "vue";
+    import { useConfigurationValues, useInvokeBlockAction } from "@Obsidian/Utility/block";
+    import { AlertType } from "@Obsidian/Enums/Controls/alertType";
+    import { alert } from "@Obsidian/Utility/dialogs";
+    import Panel from "@Obsidian/Controls/panel.obs";
+    import RockForm from "@Obsidian/Controls/rockForm.obs";
+    import RockButton from "@Obsidian/Controls/rockButton.obs";
+    import StaticFormControl from "@Obsidian/Controls/staticFormControl.obs";
+    import EmailBox from "@Obsidian/Controls/emailBox.obs";
+    import CheckBox from "@Obsidian/Controls/checkBox.obs";
+    import NotificationBox from "@Obsidian/Controls/notificationBox.obs";
+    import { useBrowserBus } from "@Obsidian/Utility/browserBus";
+    import { ACCOUNT_CHANGED_MESSAGE } from "./AcmeCertificate/messages.partial";
+    import { AcmeConfigBag } from "./viewModels";
+    import { AcmeConfigRegistrationBag } from "./viewModels";
+
+    const config = useConfigurationValues<AcmeConfigBag>();
+    const invokeBlockAction = useInvokeBlockAction();
+    const browserBus = useBrowserBus();
+
+    // #region Values
+
+    type Mode = "view" | "register" | "edit";
+
+    const bag = reactive<AcmeConfigBag>({ ...config });
+    const mode = ref<Mode>("view");
+    const isSaving = ref(false);
+
+    const registration = reactive<AcmeConfigRegistrationBag>({ testMode: false, hasExistingAccount: false });
+    const registerEmail = ref("");
+    const registerTestMode = ref(false);
+    const agreeToTerms = ref(false);
+    const tosError = ref(false);
+
+    const editOfflineMode = ref(false);
+
+    // #endregion
+
+    // #region Event Handlers
+
+    async function onRegisterClick(): Promise<void> {
+        const result = await invokeBlockAction<AcmeConfigRegistrationBag>("PrepareRegistration");
+
+        if (result.isSuccess && result.data) {
+            Object.assign(registration, result.data);
+            registerEmail.value = result.data.email ?? "";
+            registerTestMode.value = result.data.testMode ?? false;
+            agreeToTerms.value = false;
+            tosError.value = false;
+            mode.value = "register";
+        }
+        else {
+            await alert(result.errorMessage ?? "Unable to prepare registration.");
+        }
+    }
+
+    async function onRegisterSave(): Promise<void> {
+        if (!agreeToTerms.value) {
+            tosError.value = true;
+            return;
+        }
+
+        isSaving.value = true;
+
+        try {
+            const result = await invokeBlockAction<AcmeConfigBag>("Register", {
+                email: registerEmail.value,
+                testMode: registerTestMode.value,
+                agreeToTerms: agreeToTerms.value
+            });
+
+            if (result.isSuccess && result.data) {
+                Object.assign(bag, result.data);
+                mode.value = "view";
+
+                // Let sibling blocks (e.g. the certificate list) reveal themselves.
+                browserBus.publish(ACCOUNT_CHANGED_MESSAGE, { isRegistered: bag.isRegistered });
+            }
+            else {
+                await alert(result.errorMessage ?? "Unable to register account.");
+            }
+        }
+        finally {
+            isSaving.value = false;
+        }
+    }
+
+    function onEditClick(): void {
+        editOfflineMode.value = bag.offlineMode;
+        mode.value = "edit";
+    }
+
+    async function onEditSave(): Promise<void> {
+        isSaving.value = true;
+
+        try {
+            const result = await invokeBlockAction<AcmeConfigBag>("SaveAccount", {
+                offlineMode: editOfflineMode.value
+            });
+
+            if (result.isSuccess && result.data) {
+                Object.assign(bag, result.data);
+                mode.value = "view";
+            }
+            else {
+                await alert(result.errorMessage ?? "Unable to save account.");
+            }
+        }
+        finally {
+            isSaving.value = false;
+        }
+    }
+
+    function onCancel(): void {
+        mode.value = "view";
+    }
+
+    onBeforeUnmount(() => browserBus.dispose());
+
+    // #endregion
+</script>

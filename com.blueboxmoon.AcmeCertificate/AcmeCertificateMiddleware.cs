@@ -1,8 +1,6 @@
-﻿using System.Threading.Tasks;
+using System.Threading.Tasks;
 
 using Microsoft.Owin;
-
-using Rock;
 
 namespace com.blueboxmoon.AcmeCertificate
 {
@@ -12,8 +10,6 @@ namespace com.blueboxmoon.AcmeCertificate
     /// <seealso cref="Microsoft.Owin.OwinMiddleware" />
     public class AcmeCertificateMiddleware : OwinMiddleware
     {
-        private bool? _disabled;
-
         /// <summary>
         /// Initializes a new instance of the <see cref="AcmeCertificateMiddleware"/> class.
         /// </summary>
@@ -29,14 +25,9 @@ namespace com.blueboxmoon.AcmeCertificate
         /// <param name="context">The request context.</param>
         public override async Task Invoke( IOwinContext context )
         {
-            if ( !_disabled.HasValue )
-            {
-                _disabled = Rock.Web.Cache.GlobalAttributesCache.Value( "AcmeCertificateDisableOwin" ).AsBoolean();
-            }
-
             var path = context.Request.Uri.AbsolutePath;
 
-            if ( !_disabled.Value && path.StartsWith( "/.well-known/acme-challenge/" ) )
+            if ( path.StartsWith( "/.well-known/acme-challenge/" ) )
             {
                 var token = path.Substring( 28 );
 

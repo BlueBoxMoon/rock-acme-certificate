@@ -1,0 +1,643 @@
+<template>
+    <NotificationBox v-if="bag.iisErrorMessage" :alertType="AlertType.Danger" v-html="bag.iisErrorMessage" />
+
+    <!-- IIS: Http Redirect module warning -->
+    <div v-if="mode === 'detail' && bag.showRedirectModuleWarning" class="alert alert-warning">
+        <div>
+            You do not currently have the Http Redirect module installed in IIS. In order to generate certificates
+            for non-Rock domains we need to enable this module.
+        </div>
+        <div class="margin-t-md">
+            Please note that doing this may restart your web sites.
+        </div>
+        <div class="margin-t-md">
+            <RockButton btnType="warning" :disabled="isBusy" @click="onEnableRedirectModule">Enable Redirect Module</RockButton>
+        </div>
+    </div>
+
+    <!-- IIS: Site redirect warning -->
+    <div v-if="mode === 'detail' && bag.showSiteRedirectWarning" class="alert alert-warning">
+        <div>
+            The following sites need redirect rules setup to forward Acme Challenge requests to your Rock site. We
+            do this by creating a <code>.well-known/acme-challenge</code> directory in each site and then redirecting
+            requests to files in those directories to your Rock site at <code>{{ bag.targetRedirectUrl }}</code> for verification.
+        </div>
+        <div class="margin-t-md">
+            <ul>
+                <li v-for="site in bag.siteRedirectNames ?? []" :key="site">{{ site }}</li>
+            </ul>
+        </div>
+        <div class="margin-t-md">
+            <RockButton btnType="warning" :disabled="isBusy" @click="onEnableSiteRedirects">Enable Site Redirects</RockButton>
+        </div>
+    </div>
+
+    <!-- Detail (read-only) -->
+    <Panel v-if="mode === 'detail'" :title="bag.name ?? ''" titleIconCssClass="fa fa-certificate">
+        <div class="row">
+            <div class="col-md-6">
+                <StaticFormControl label="Remove Old Certificate" :modelValue="bag.removeOldCertificate ? 'True' : 'False'" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <StaticFormControl label="Domains" :modelValue="(bag.domains ?? []).join('\n')" />
+                <StaticFormControl label="Bindings" :modelValue="formattedBindings.join('\n')" />
+            </div>
+            <div class="col-md-6">
+                <StaticFormControl label="Last Renewed" :modelValue="formatDateTime(bag.lastRenewed)" />
+                <StaticFormControl label="Expires On" :modelValue="formatDateTime(bag.expires)" />
+            </div>
+        </div>
+
+        <div class="actions">
+            <RockButton btnType="primary" @click="onEditClick">Edit</RockButton>
+            <RockButton btnType="success" class="margin-l-sm" @click="onRenewClick">Renew</RockButton>
+            <RockButton btnType="link" @click="onBackToParent">Cancel</RockButton>
+            <RockButton btnType="link" :disabled="isBusy" @click="onDeleteClick">Delete</RockButton>
+        </div>
+    </Panel>
+
+    <!-- Edit -->
+    <Panel v-else-if="mode === 'edit'" :title="editTitle" titleIconCssClass="fa fa-certificate">
+        <RockForm @submit="onSaveClick">
+            <NotificationBox v-if="editMessage" :alertType="AlertType.Warning">{{ editMessage }}</NotificationBox>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <TextBox v-model="editName" label="Friendly Name" rules="required"
+                             help="A friendly name that you will recognize when working with this certificate." />
+                </div>
+                <div class="col-md-6">
+                    <CheckBox v-model="editRemoveOld" label="Remove Old Certificate"
+                              help="After renewing the certificate, should the old certificate be removed from the certificate store?" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <ValueList v-model="editDomains" label="Domains"
+                               help="Enter all the domains you want to be associated with this certificate." />
+                </div>
+                <div class="col-md-6">
+                    <label class="control-label">&nbsp;</label>
+                    <div>
+                        <RockButton btnType="default" :disabled="isBusy" @click="onRecommendConfig">Recommend Configuration</RockButton>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <RockLabel help="Enter all the IIS bindings that you want to be updated to match this certificate.">Bindings</RockLabel>
+
+                <table class="grid-table table table-condensed margin-b-md">
+                    <thead>
+                        <tr>
+                            <th>Site</th>
+                            <th>IP Address</th>
+                            <th>Port</th>
+                            <th>Domain</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(binding, index) in editBindings" :key="index" class="cursor-pointer" @click="onEditBinding(index)">
+                            <td>{{ binding.site }}</td>
+                            <td>{{ binding.ipAddress }}</td>
+                            <td>{{ binding.port }}</td>
+                            <td>{{ binding.domain }}</td>
+                            <td class="grid-columncommand text-right">
+                                <RockButton btnType="danger" btnSize="sm" @click.stop="onDeleteBinding(index)">
+                                    <i class="fa fa-times"></i>
+                                </RockButton>
+                            </td>
+                        </tr>
+                        <tr v-if="editBindings.length === 0">
+                            <td colspan="5" class="text-center text-muted">No bindings configured.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <RockButton btnType="default" btnSize="sm" :disabled="isBusy" @click="onAddBinding">
+                    <i class="fa fa-plus"></i> Add Binding
+                </RockButton>
+            </div>
+
+            <div class="actions">
+                <RockButton btnType="primary" type="submit" :disabled="isBusy">Save</RockButton>
+                <RockButton btnType="link" :disabled="isBusy" @click="onEditCancel">Cancel</RockButton>
+            </div>
+        </RockForm>
+    </Panel>
+
+    <!-- Renew -->
+    <Panel v-else-if="mode === 'renew'" :title="`Renew ${bag.name ?? ''}`" titleIconCssClass="fa fa-certificate">
+        <div v-if="!renewStarted">
+            <div class="alert alert-info">
+                If you have a custom CSR you may paste it below, otherwise leave the text box empty and we will automatically
+                generate one for you. Using a custom CSR requires you to manually install the certificate after renewal.
+            </div>
+
+            <TextBox v-model="renewCsr" label="CSR" textMode="multiline" :rows="6" />
+
+            <div class="actions">
+                <RockButton btnType="primary" :disabled="isBusy" @click="onRequestCertificate">Request Certificate</RockButton>
+                <RockButton btnType="link" :disabled="isBusy" @click="onRenewCancel">Cancel</RockButton>
+            </div>
+        </div>
+
+        <div v-else>
+            <div v-if="renewRunning" class="progress progress-striped active">
+                <div class="progress-bar" role="progressbar" style="width: 100%"></div>
+            </div>
+
+            <pre v-if="renewStatus" class="margin-t-md alert alert-info">{{ renewStatus }}</pre>
+            <pre v-if="renewError" class="margin-t-md alert alert-danger">{{ renewError }}</pre>
+
+            <div v-if="renewSuccess">
+                <pre class="margin-t-md alert alert-success">{{ successMessage }}</pre>
+
+                <details v-if="renewResult?.privateKey" class="panel panel-default margin-t-md">
+                    <summary class="panel-heading">Private Key</summary>
+                    <div class="panel-body"><pre>{{ renewResult.privateKey }}</pre></div>
+                </details>
+
+                <details v-for="(cert, index) in renewResult?.certificates ?? []" :key="index" class="panel panel-default margin-t-md">
+                    <summary class="panel-heading">{{ index === 0 ? 'Certificate' : 'Intermediate Certificate' }}</summary>
+                    <div class="panel-body"><pre>{{ cert }}</pre></div>
+                </details>
+            </div>
+
+            <div v-if="renewDone" class="actions margin-t-md">
+                <RockButton btnType="primary" @click="onRenewDone">Done</RockButton>
+            </div>
+        </div>
+    </Panel>
+
+    <!-- Binding editor modal -->
+    <Modal v-model="isBindingModalVisible"
+           :title="bindingModalTitle"
+           :saveText="bindingModalSaveText"
+           @save="onBindingModalSave">
+        <DropDownList v-model="mSite" label="Site" :items="siteItems" :showBlankItem="true" rules="required" />
+        <DropDownList v-model="mIpAddress" label="IP Address" :items="ipItems" :showBlankItem="true"
+                      help="If you select an IP address here then only this address will match this binding." />
+        <NumberBox v-model="mPort" label="Port" :minimumValue="0" :maximumValue="65535" />
+        <TextBox v-model="mDomain" label="Domain"
+                 help="If you enter a value here then only this domain name will match this binding." />
+    </Modal>
+</template>
+
+<script setup lang="ts">
+    import { computed, reactive, ref } from "vue";
+    import { useConfigurationValues, useInvokeBlockAction } from "@Obsidian/Utility/block";
+    import { AlertType } from "@Obsidian/Enums/Controls/alertType";
+    import { RockDateTime } from "@Obsidian/Utility/rockDateTime";
+    import { alert, confirmDelete } from "@Obsidian/Utility/dialogs";
+    import { ListItemBag } from "@Obsidian/ViewModels/Utility/listItemBag";
+    import Panel from "@Obsidian/Controls/panel.obs";
+    import RockForm from "@Obsidian/Controls/rockForm.obs";
+    import RockButton from "@Obsidian/Controls/rockButton.obs";
+    import NotificationBox from "@Obsidian/Controls/notificationBox.obs";
+    import StaticFormControl from "@Obsidian/Controls/staticFormControl.obs";
+    import RockLabel from "@Obsidian/Controls/rockLabel.obs";
+    import TextBox from "@Obsidian/Controls/textBox.obs";
+    import CheckBox from "@Obsidian/Controls/checkBox.obs";
+    import ValueList from "@Obsidian/Controls/valueList.obs";
+    import Modal from "@Obsidian/Controls/modal.obs";
+    import DropDownList from "@Obsidian/Controls/dropDownList.obs";
+    import NumberBox from "@Obsidian/Controls/numberBox.obs";
+    import { AcmeCertificateDetailBag, AcmeCertificateEditDataBag, BindingBag, BindingOptionsBag, CertificateDataBag } from "./viewModels";
+
+    const config = useConfigurationValues<AcmeCertificateDetailBag>();
+    const invokeBlockAction = useInvokeBlockAction();
+
+    type Mode = "detail" | "edit" | "renew";
+
+    // #region Values
+
+    const bag = reactive<AcmeCertificateDetailBag>({ ...config });
+    const mode = ref<Mode>(config.isNew ? "edit" : "detail");
+    const isBusy = ref(false);
+
+    // Edit state.
+    const editName = ref("");
+    const editRemoveOld = ref(false);
+    const editDomains = ref<string[]>([]);
+    const editBindings = ref<BindingBag[]>([]);
+    const editMessage = ref("");
+
+    // Binding modal state.
+    const isBindingModalVisible = ref(false);
+    const editingBindingIndex = ref<number | null>(null);
+    const mSite = ref("");
+    const mIpAddress = ref("");
+    const mPort = ref<number | null>(443);
+    const mDomain = ref("");
+    const bindingOptions = reactive<BindingOptionsBag>({ sites: [], ipAddresses: [] });
+    let bindingOptionsLoaded = false;
+
+    // Renew state.
+    const renewCsr = ref("");
+    const renewStarted = ref(false);
+    const renewRunning = ref(false);
+    const renewStatus = ref("");
+    const renewError = ref("");
+    const renewSuccess = ref(false);
+    const renewDone = ref(false);
+    const renewResult = ref<CertificateDataBag | null>(null);
+
+    // #endregion
+
+    // #region Computed
+
+    const editTitle = computed(() => bag.isNew ? "Add Certificate" : "Edit Certificate");
+
+    const formattedBindings = computed(() => {
+        return (bag.bindings ?? []).map(b => `${b.site} ${b.ipAddress ? b.ipAddress : "*"}:${b.port}:${b.domain}`);
+    });
+
+    const siteItems = computed<ListItemBag[]>(() => (bindingOptions.sites ?? []).map(s => ({ value: s, text: s })));
+    const ipItems = computed<ListItemBag[]>(() => (bindingOptions.ipAddresses ?? []).map(s => ({ value: s, text: s })));
+
+    const bindingModalTitle = computed(() => editingBindingIndex.value === null ? "Add Binding" : "Edit Binding");
+    const bindingModalSaveText = computed(() => editingBindingIndex.value === null ? "Add" : "Save");
+
+    const successMessage = computed(() => {
+        const action = !bag.offlineMode && renewResult.value?.privateKey ? "installed" : "renewed";
+        return `Certificate has been ${action}. You can see the certificate data by expanding the panels below.`;
+    });
+
+    // #endregion
+
+    // #region Functions
+
+    function formatDateTime(value: string | null | undefined): string {
+        if (!value) {
+            return "";
+        }
+
+        const dateTime = RockDateTime.parseISO(value);
+
+        return dateTime ? dateTime.toASPString("MMMM d, yyyy h:mm tt") : value;
+    }
+
+    function startEdit(): void {
+        editName.value = bag.name ?? "";
+        editRemoveOld.value = bag.removeOldCertificate;
+        editDomains.value = [...(bag.domains ?? [])];
+        editBindings.value = (bag.bindings ?? []).map(b => ({ ...b }));
+        editMessage.value = "";
+        mode.value = "edit";
+    }
+
+    async function ensureBindingOptions(): Promise<void> {
+        if (bindingOptionsLoaded) {
+            return;
+        }
+
+        const result = await invokeBlockAction<BindingOptionsBag>("GetBindingOptions");
+
+        if (result.isSuccess && result.data) {
+            bindingOptions.sites = result.data.sites ?? [];
+            bindingOptions.ipAddresses = result.data.ipAddresses ?? [];
+            bindingOptionsLoaded = true;
+        }
+    }
+
+    function navigateToCertificate(idKey: string): void {
+        const url = new URL(window.location.href);
+        url.searchParams.set("Id", idKey);
+        window.location.href = url.toString();
+    }
+
+    function goToParent(): void {
+        if (bag.parentPageUrl) {
+            window.location.href = bag.parentPageUrl;
+        }
+        else {
+            window.history.back();
+        }
+    }
+
+    // #endregion
+
+    // #region Detail Event Handlers
+
+    function onEditClick(): void {
+        startEdit();
+    }
+
+    function onRenewClick(): void {
+        renewCsr.value = "";
+        renewStarted.value = false;
+        renewRunning.value = false;
+        renewStatus.value = "";
+        renewError.value = "";
+        renewSuccess.value = false;
+        renewDone.value = false;
+        renewResult.value = null;
+        mode.value = "renew";
+    }
+
+    function onBackToParent(): void {
+        goToParent();
+    }
+
+    async function onDeleteClick(): Promise<void> {
+        if (!await confirmDelete("Certificate")) {
+            return;
+        }
+
+        isBusy.value = true;
+
+        try {
+            const result = await invokeBlockAction<string>("DeleteCertificate");
+
+            if (result.isSuccess) {
+                if (result.data) {
+                    window.location.href = result.data;
+                }
+                else {
+                    goToParent();
+                }
+            }
+            else {
+                await alert(result.errorMessage ?? "Unable to delete certificate.");
+            }
+        }
+        finally {
+            isBusy.value = false;
+        }
+    }
+
+    async function onEnableRedirectModule(): Promise<void> {
+        isBusy.value = true;
+
+        try {
+            const result = await invokeBlockAction<AcmeCertificateDetailBag>("EnableRedirectModule");
+
+            if (result.isSuccess && result.data) {
+                Object.assign(bag, result.data);
+            }
+            else {
+                await alert(result.errorMessage ?? "Unable to enable the redirect module.");
+            }
+        }
+        finally {
+            isBusy.value = false;
+        }
+    }
+
+    async function onEnableSiteRedirects(): Promise<void> {
+        isBusy.value = true;
+
+        try {
+            const result = await invokeBlockAction<AcmeCertificateDetailBag>("EnableSiteRedirects");
+
+            if (result.isSuccess && result.data) {
+                Object.assign(bag, result.data);
+            }
+            else {
+                await alert(result.errorMessage ?? "Unable to enable the site redirects.");
+            }
+        }
+        finally {
+            isBusy.value = false;
+        }
+    }
+
+    // #endregion
+
+    // #region Edit Event Handlers
+
+    async function onSaveClick(): Promise<void> {
+        editMessage.value = "";
+
+        const domains = editDomains.value.filter(d => d && d.trim().length > 0);
+
+        if (domains.length === 0) {
+            editMessage.value = "You must enter at least one domain to validate.";
+            return;
+        }
+
+        if (editBindings.value.length === 0 && !bag.offlineMode) {
+            editMessage.value = "You must add at least one IIS binding.";
+            return;
+        }
+
+        isBusy.value = true;
+
+        try {
+            const result = await invokeBlockAction<AcmeCertificateDetailBag>("Save", {
+                bag: {
+                    name: editName.value,
+                    removeOldCertificate: editRemoveOld.value,
+                    domains: domains,
+                    bindings: editBindings.value
+                }
+            });
+
+            if (result.isSuccess && result.data?.idKey) {
+                navigateToCertificate(result.data.idKey);
+            }
+            else {
+                editMessage.value = result.errorMessage ?? "Unable to save certificate.";
+            }
+        }
+        finally {
+            isBusy.value = false;
+        }
+    }
+
+    function onEditCancel(): void {
+        if (bag.isNew) {
+            goToParent();
+        }
+        else {
+            mode.value = "detail";
+        }
+    }
+
+    async function onRecommendConfig(): Promise<void> {
+        isBusy.value = true;
+
+        try {
+            const request: AcmeCertificateEditDataBag = {
+                domains: editDomains.value,
+                bindings: editBindings.value
+            };
+
+            const result = await invokeBlockAction<AcmeCertificateEditDataBag>("RecommendConfiguration", { current: request });
+
+            if (result.isSuccess && result.data) {
+                editDomains.value = result.data.domains ?? [];
+                editBindings.value = result.data.bindings ?? [];
+            }
+            else {
+                await alert(result.errorMessage ?? "Unable to recommend a configuration.");
+            }
+        }
+        finally {
+            isBusy.value = false;
+        }
+    }
+
+    async function onAddBinding(): Promise<void> {
+        await ensureBindingOptions();
+
+        editingBindingIndex.value = null;
+        mSite.value = bindingOptions.sites?.[0] ?? "";
+        mIpAddress.value = "";
+        mPort.value = 443;
+        mDomain.value = "";
+        isBindingModalVisible.value = true;
+    }
+
+    async function onEditBinding(index: number): Promise<void> {
+        await ensureBindingOptions();
+
+        const binding = editBindings.value[index];
+        editingBindingIndex.value = index;
+        mSite.value = binding.site ?? "";
+        mIpAddress.value = binding.ipAddress ?? "";
+        mPort.value = binding.port;
+        mDomain.value = binding.domain ?? "";
+        isBindingModalVisible.value = true;
+    }
+
+    function onDeleteBinding(index: number): void {
+        editBindings.value.splice(index, 1);
+    }
+
+    function onBindingModalSave(): void {
+        const binding: BindingBag = {
+            site: mSite.value,
+            ipAddress: mIpAddress.value,
+            port: mPort.value ?? 443,
+            domain: mDomain.value
+        };
+
+        if (editingBindingIndex.value === null) {
+            editBindings.value.push(binding);
+        }
+        else {
+            editBindings.value[editingBindingIndex.value] = binding;
+        }
+
+        isBindingModalVisible.value = false;
+    }
+
+    // #endregion
+
+    // #region Renew Event Handlers
+
+    function onRenewCancel(): void {
+        mode.value = "detail";
+    }
+
+    function onRenewDone(): void {
+        if (bag.idKey) {
+            navigateToCertificate(bag.idKey);
+        }
+        else {
+            goToParent();
+        }
+    }
+
+    function updateStatus(message: string): void {
+        renewStatus.value = renewStatus.value + (renewStatus.value !== "" ? "\n" : "") + message;
+    }
+
+    async function installCertificate(certificate: CertificateDataBag, retry: boolean): Promise<void> {
+        updateStatus("Installing Certificate...");
+
+        let result;
+
+        try {
+            result = await invokeBlockAction("InstallCertificate", { certificate });
+        }
+        catch {
+            // The connection likely dropped because IIS bindings were reconfigured.
+            // Fall through to verification, which is the source of truth.
+            return;
+        }
+
+        if (!result.isSuccess) {
+            if (retry) {
+                await installCertificate(certificate, false);
+                return;
+            }
+
+            throw new Error(result.errorMessage ?? "Failed to install certificate.");
+        }
+    }
+
+    async function onRequestCertificate(): Promise<void> {
+        renewStarted.value = true;
+        renewRunning.value = true;
+        renewStatus.value = "";
+        renewError.value = "";
+        renewSuccess.value = false;
+        renewDone.value = false;
+        renewResult.value = null;
+        isBusy.value = true;
+
+        try {
+            updateStatus("Determining configuration...");
+            const hashResult = await invokeBlockAction<string>("GetCertificateHash");
+            if (!hashResult.isSuccess) {
+                throw new Error(hashResult.errorMessage ?? "Unable to determine configuration.");
+            }
+            const oldHash = hashResult.data ?? "";
+
+            updateStatus("Renewing certificate...");
+            const renewResponse = await invokeBlockAction<CertificateDataBag>("RenewCertificate", {
+                csr: renewCsr.value ? renewCsr.value : null
+            });
+            if (!renewResponse.isSuccess || !renewResponse.data) {
+                throw new Error(renewResponse.errorMessage ?? "Unable to renew certificate.");
+            }
+            const certificate = renewResponse.data;
+
+            if (certificate.privateKey && !bag.offlineMode) {
+                await installCertificate(certificate, true);
+
+                updateStatus("Verifying Certificate Installed Correctly (this may take a while)...");
+                const verifyResult = await invokeBlockAction<boolean>("VerifyCertificateInstalled", {
+                    certificateHash: certificate.hash
+                });
+                if (!verifyResult.isSuccess) {
+                    throw new Error(verifyResult.errorMessage ?? "Unable to verify certificate.");
+                }
+                if (verifyResult.data !== true) {
+                    throw new Error("The certificate did not install correctly and no error was returned. Check the exception log for more details.");
+                }
+
+                if (bag.removeOldCertificate && oldHash) {
+                    updateStatus("Removing old certificate...");
+                    try {
+                        await invokeBlockAction("DeleteCertificateHash", { certificateHash: oldHash });
+                    }
+                    catch {
+                        // Best-effort cleanup, matching the legacy behavior.
+                    }
+                }
+            }
+
+            renewResult.value = certificate;
+            renewSuccess.value = true;
+        }
+        catch (e) {
+            renewError.value = e instanceof Error ? e.message : String(e);
+        }
+        finally {
+            renewRunning.value = false;
+            renewDone.value = true;
+            isBusy.value = false;
+        }
+    }
+
+    // #endregion
+</script>
