@@ -1,0 +1,33 @@
+{
+  "lockFileVersion": 1,
+  "versions": [
+    {
+      "version": "3.2.0",
+      "installedFiles": [
+        "Bin/BouncyCastle.Crypto.dll",
+        "Bin/com.blueboxmoon.AcmeCertificate.dll",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeCertificateDetail.ascx",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeCertificateDetail.ascx.cs",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeCertificates.ascx",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeCertificates.ascx.cs",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeChallenge.ascx",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeChallenge.ascx.cs",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeConfig.ascx",
+        "Plugins/com_blueboxmoon/AcmeCertificate/AcmeConfig.ascx.cs"
+      ]
+    },
+    {
+      "version": "3.3.0",
+      "installedFiles": [
+        "Bin/BouncyCastle.Crypto.dll",
+        "Bin/com.blueboxmoon.AcmeCertificate.dll",
+        "Plugins/com_blueboxmoon/AcmeCertificate/acmeCertificateDetail.obs.js",
+        "Plugins/com_blueboxmoon/AcmeCertificate/acmeCertificateDetail.obs.js.map",
+        "Plugins/com_blueboxmoon/AcmeCertificate/acmeCertificateList.obs.js",
+        "Plugins/com_blueboxmoon/AcmeCertificate/acmeCertificateList.obs.js.map",
+        "Plugins/com_blueboxmoon/AcmeCertificate/acmeConfig.obs.js",
+        "Plugins/com_blueboxmoon/AcmeCertificate/acmeConfig.obs.js.map"
+      ]
+    }
+  ]
+}

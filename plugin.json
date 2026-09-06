@@ -4,7 +4,7 @@
         "code": "com.blueboxmoon"
     },
     "name": "Acme Certificate",
-    "version": "3.2.0",
+    "version": "3.3.0",
     "include": {
         "com.blueboxmoon.AcmeCertificate/bin/Release/net472/com.blueboxmoon.AcmeCertificate.dll": "Bin/",
         "com.blueboxmoon.AcmeCertificate/bin/Release/net472/BouncyCastle.Crypto.dll": "Bin/",
