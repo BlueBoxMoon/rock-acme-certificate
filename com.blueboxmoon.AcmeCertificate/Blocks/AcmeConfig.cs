@@ -67,6 +67,19 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 : ActionStatusCode( System.Net.HttpStatusCode.MethodNotAllowed );
         }
 
+        /// <summary>
+        /// Rejects the request unless the current person has ADMINISTRATE on this
+        /// block. The ACME account is a server-wide credential, so changing it is an
+        /// administrator action.
+        /// </summary>
+        /// <returns>A forbidden result when the person lacks ADMINISTRATE, otherwise <c>null</c>.</returns>
+        private BlockActionResult RequireBlockAdministrate()
+        {
+            return BlockCache.IsAuthorized( Rock.Security.Authorization.ADMINISTRATE, RequestContext.CurrentPerson )
+                ? null
+                : ActionForbidden( "You are not authorized to perform this action." );
+        }
+
         #endregion Methods
 
         #region Block Actions
@@ -106,6 +119,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 return methodError;
             }
 
+            var authError = RequireBlockAdministrate();
+            if ( authError != null )
+            {
+                return authError;
+            }
+
             if ( !agreeToTerms )
             {
                 return ActionBadRequest( "You must read and agree to the terms of service." );
@@ -135,6 +154,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
             if ( methodError != null )
             {
                 return methodError;
+            }
+
+            var authError = RequireBlockAdministrate();
+            if ( authError != null )
+            {
+                return authError;
             }
 
             var account = AcmeHelper.LoadAccountData();

@@ -147,6 +147,17 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 : ActionStatusCode( System.Net.HttpStatusCode.MethodNotAllowed );
         }
 
+        /// <summary>
+        /// Rejects the request unless the current person has EDIT on this block.
+        /// </summary>
+        /// <returns>A forbidden result when the person lacks EDIT, otherwise <c>null</c>.</returns>
+        private BlockActionResult RequireBlockEdit()
+        {
+            return BlockCache.IsAuthorized( Rock.Security.Authorization.EDIT, RequestContext.CurrentPerson )
+                ? null
+                : ActionForbidden( "You are not authorized to make changes here." );
+        }
+
         #endregion Methods
 
         #region Block Actions
@@ -163,6 +174,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
             if ( methodError != null )
             {
                 return methodError;
+            }
+
+            var authError = RequireBlockEdit();
+            if ( authError != null )
+            {
+                return authError;
             }
 
             using ( var rockContext = new RockContext() )

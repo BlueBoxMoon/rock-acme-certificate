@@ -103,6 +103,33 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         }
 
         /// <summary>
+        /// Rejects the request unless the current person has EDIT on this block. Used
+        /// by the certificate management actions. The Acme pages ship locked to Rock
+        /// Administrators, but block security is the real server-side gate.
+        /// </summary>
+        /// <returns>A forbidden result when the person lacks EDIT, otherwise <c>null</c>.</returns>
+        private BlockActionResult RequireBlockEdit()
+        {
+            return BlockCache.IsAuthorized( Rock.Security.Authorization.EDIT, RequestContext.CurrentPerson )
+                ? null
+                : ActionForbidden( "You are not authorized to make changes here." );
+        }
+
+        /// <summary>
+        /// Rejects the request unless the current person has ADMINISTRATE on this
+        /// block. Used by the account-wide and server-wide actions (the ACME account,
+        /// the IIS redirect module and site redirects, and removing a certificate from
+        /// the machine store).
+        /// </summary>
+        /// <returns>A forbidden result when the person lacks ADMINISTRATE, otherwise <c>null</c>.</returns>
+        private BlockActionResult RequireBlockAdministrate()
+        {
+            return BlockCache.IsAuthorized( Rock.Security.Authorization.ADMINISTRATE, RequestContext.CurrentPerson )
+                ? null
+                : ActionForbidden( "You are not authorized to perform this action." );
+        }
+
+        /// <summary>
         /// Builds the full detail/edit/IIS state for the specified certificate group.
         /// </summary>
         private AcmeCertificateDetailBag BuildDetailBag( Group group, RockContext rockContext )
@@ -428,6 +455,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 return methodError;
             }
 
+            var authError = RequireBlockEdit();
+            if ( authError != null )
+            {
+                return authError;
+            }
+
             var domains = ( bag.Domains ?? new List<string>() )
                 .Where( d => !string.IsNullOrWhiteSpace( d ) )
                 .ToList();
@@ -494,6 +527,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 return methodError;
             }
 
+            var authError = RequireBlockEdit();
+            if ( authError != null )
+            {
+                return authError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var groupService = new GroupService( rockContext );
@@ -527,6 +566,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 return methodError;
             }
 
+            var authError = RequireBlockAdministrate();
+            if ( authError != null )
+            {
+                return authError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var group = GetCurrentGroup( rockContext );
@@ -555,6 +600,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
             if ( methodError != null )
             {
                 return methodError;
+            }
+
+            var authError = RequireBlockAdministrate();
+            if ( authError != null )
+            {
+                return authError;
             }
 
             using ( var rockContext = new RockContext() )
@@ -642,6 +693,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 return methodError;
             }
 
+            var authError = RequireBlockEdit();
+            if ( authError != null )
+            {
+                return authError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var group = GetCurrentGroup( rockContext );
@@ -691,6 +748,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 return methodError;
             }
 
+            var authError = RequireBlockEdit();
+            if ( authError != null )
+            {
+                return authError;
+            }
+
             AcmeHelper.InstallCertificateData( ToCertificateData( certificate ), true );
 
             return ActionOk();
@@ -727,6 +790,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
             if ( methodError != null )
             {
                 return methodError;
+            }
+
+            var authError = RequireBlockAdministrate();
+            if ( authError != null )
+            {
+                return authError;
             }
 
             byte[] hash = new byte[certificateHash.Length / 2];
