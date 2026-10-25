@@ -205,6 +205,73 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
             };
         }
 
+        /// <summary>
+        /// Matches a well formed host name: optional "*." wildcard, then dot separated
+        /// labels of letters, digits, hyphen, and underscore. Used to reject domains
+        /// and host headers that contain spaces, slashes, delimiters, or other
+        /// characters that cannot appear in a host name.
+        /// </summary>
+        private static readonly System.Text.RegularExpressions.Regex _hostNameRegex =
+            new System.Text.RegularExpressions.Regex( @"^(\*\.)?[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*$",
+                System.Text.RegularExpressions.RegexOptions.Compiled );
+
+        private static bool IsValidHostName( string value )
+        {
+            return !string.IsNullOrWhiteSpace( value ) && _hostNameRegex.IsMatch( value );
+        }
+
+        private static bool ContainsDelimiterOrControl( string value )
+        {
+            return value.Any( c => c == ',' || c == '|' || char.IsControl( c ) );
+        }
+
+        /// <summary>
+        /// Validates the domains and bindings posted to <see cref="Save"/>. The offered
+        /// sites, IP addresses, and ports are only hints, so an administrator may enter
+        /// values the server does not currently list. This rejects only values that are
+        /// malformed: a port outside 1 to 65535, an IP address that does not parse, a
+        /// host name with invalid characters, and the "," or "|" delimiters that would
+        /// corrupt the stored binding and domain lists.
+        /// </summary>
+        /// <param name="domains">The certificate domains entered by the person.</param>
+        /// <param name="bindings">The IIS bindings entered by the person.</param>
+        /// <returns>An error message, or <c>null</c> when every value is well formed.</returns>
+        private static string ValidateCertificateInput( List<string> domains, List<BindingBag> bindings )
+        {
+            foreach ( var domain in domains )
+            {
+                if ( !IsValidHostName( domain ) )
+                {
+                    return $"'{domain}' is not a valid domain name.";
+                }
+            }
+
+            foreach ( var binding in bindings )
+            {
+                if ( string.IsNullOrWhiteSpace( binding.Site ) || ContainsDelimiterOrControl( binding.Site ) )
+                {
+                    return "Each binding must have a site name that does not contain a comma, a vertical bar, or control characters.";
+                }
+
+                if ( binding.Port < 1 || binding.Port > 65535 )
+                {
+                    return "Each binding port must be between 1 and 65535.";
+                }
+
+                if ( !string.IsNullOrEmpty( binding.IpAddress ) && !System.Net.IPAddress.TryParse( binding.IpAddress, out _ ) )
+                {
+                    return $"'{binding.IpAddress}' is not a valid IP address.";
+                }
+
+                if ( !string.IsNullOrEmpty( binding.Domain ) && !IsValidHostName( binding.Domain ) )
+                {
+                    return $"'{binding.Domain}' is not a valid host name.";
+                }
+            }
+
+            return null;
+        }
+
         private static CertificateDataBag ToCertificateDataBag( CertificateData c )
         {
             return new CertificateDataBag
@@ -481,6 +548,16 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
             if ( bindings.Count == 0 && !AcmeHelper.LoadAccountData().OfflineMode )
             {
                 return ActionBadRequest( "You must add at least one IIS binding." );
+            }
+
+            //
+            // Reject malformed domains and bindings before storing them. Free-form
+            // values are allowed; only truly invalid values are refused.
+            //
+            var validationError = ValidateCertificateInput( domains, bindings );
+            if ( validationError != null )
+            {
+                return ActionBadRequest( validationError );
             }
 
             using ( var rockContext = new RockContext() )
