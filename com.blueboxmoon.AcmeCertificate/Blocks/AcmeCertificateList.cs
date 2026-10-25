@@ -134,6 +134,19 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 .AddTextField( "domains", g => string.Join( ", ", g.GetAttributeValues( "Domains" ) ) );
         }
 
+        /// <summary>
+        /// Rejects a request that is not a POST. State-changing block actions can
+        /// otherwise be triggered by a cross-site GET link that carries the
+        /// visitor's authentication cookie.
+        /// </summary>
+        /// <returns>A method-not-allowed result when the request is not a POST, otherwise <c>null</c>.</returns>
+        private BlockActionResult RequirePostRequest()
+        {
+            return AcmeHelper.IsPostRequest()
+                ? null
+                : ActionStatusCode( System.Net.HttpStatusCode.MethodNotAllowed );
+        }
+
         #endregion Methods
 
         #region Block Actions
@@ -146,12 +159,24 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult Delete( string key )
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var groupService = new GroupService( rockContext );
                 var group = groupService.Get( key, !PageCache.Layout.Site.DisablePredictableIds );
 
-                if ( group == null )
+                // The key is client input, so confirm the group is actually a
+                // certificate group before deleting it. Without this check a
+                // caller could pass the id of any Rock group (a security role, a
+                // family) and delete it.
+                var acmeGroupTypeId = GroupTypeCache.Get( SystemGuid.GroupType.ACME_CERTIFICATES )?.Id;
+
+                if ( group == null || group.GroupTypeId != acmeGroupTypeId )
                 {
                     return ActionBadRequest( "Certificate not found." );
                 }

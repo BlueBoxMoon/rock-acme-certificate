@@ -73,7 +73,33 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 return null;
             }
 
-            return new GroupService( rockContext ).Get( idParam, !PageCache.Layout.Site.DisablePredictableIds );
+            var group = new GroupService( rockContext ).Get( idParam, !PageCache.Layout.Site.DisablePredictableIds );
+
+            // Only groups of the Acme Certificates type belong to this block. The
+            // page parameter is client input, so without this check a caller could
+            // name any Rock group (a security role, a family) and have this block
+            // load, rename, or delete it.
+            var acmeGroupTypeId = GroupTypeCache.Get( SystemGuid.GroupType.ACME_CERTIFICATES )?.Id;
+
+            if ( group != null && group.GroupTypeId != acmeGroupTypeId )
+            {
+                return null;
+            }
+
+            return group;
+        }
+
+        /// <summary>
+        /// Rejects a request that is not a POST. State-changing block actions can
+        /// otherwise be triggered by a cross-site GET link that carries the
+        /// visitor's authentication cookie.
+        /// </summary>
+        /// <returns>A method-not-allowed result when the request is not a POST, otherwise <c>null</c>.</returns>
+        private BlockActionResult RequirePostRequest()
+        {
+            return AcmeHelper.IsPostRequest()
+                ? null
+                : ActionStatusCode( System.Net.HttpStatusCode.MethodNotAllowed );
         }
 
         /// <summary>
@@ -396,6 +422,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult Save( AcmeCertificateSaveBag bag )
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             var domains = ( bag.Domains ?? new List<string>() )
                 .Where( d => !string.IsNullOrWhiteSpace( d ) )
                 .ToList();
@@ -456,6 +488,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult DeleteCertificate()
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var groupService = new GroupService( rockContext );
@@ -483,6 +521,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult EnableRedirectModule()
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var group = GetCurrentGroup( rockContext );
@@ -507,6 +551,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult EnableSiteRedirects()
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var group = GetCurrentGroup( rockContext );
@@ -538,7 +588,7 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                 if ( errors.Any() )
                 {
                     bag.IisErrorMessage = string.Format( "Failed to enable the redirect on one or more sites. This may be due to insufficient permissions to make modifications to the other sites. <ul><li>{0}</li></ul>",
-                        string.Join( "</li><li>", errors ) );
+                        string.Join( "</li><li>", errors.Select( e => e.EncodeHtml() ) ) );
                 }
 
                 return ActionOk( bag );
@@ -586,6 +636,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult RenewCertificate( string csr = null )
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             using ( var rockContext = new RockContext() )
             {
                 var group = GetCurrentGroup( rockContext );
@@ -629,6 +685,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult InstallCertificate( CertificateDataBag certificate )
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             AcmeHelper.InstallCertificateData( ToCertificateData( certificate ), true );
 
             return ActionOk();
@@ -661,6 +723,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult DeleteCertificateHash( string certificateHash )
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             byte[] hash = new byte[certificateHash.Length / 2];
 
             for ( int i = 0; i < certificateHash.Length; i += 2 )

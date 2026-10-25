@@ -35,10 +35,13 @@ namespace com.blueboxmoon.AcmeCertificate
 
                 if ( string.IsNullOrEmpty( authorization ) )
                 {
-                    Rock.Logging.RockLogger.Log.Information( AcmeHelper.LoggingDomain, $"Received challenge request for unknown token '{token}'" );
+                    // Logged at Debug so an anonymous caller cannot fill the log
+                    // by requesting a stream of unknown tokens.
+                    Rock.Logging.RockLogger.Log.Debug( AcmeHelper.LoggingDomain, $"Received challenge request for unknown token '{token}'" );
 
                     context.Response.StatusCode = 404;
-                    context.Response.Headers.Set( "Content-Type", "text-plain" );
+                    context.Response.Headers.Set( "Content-Type", "text/plain" );
+                    context.Response.Headers.Set( "X-Content-Type-Options", "nosniff" );
                     context.Response.Write( "Unknown Challenge" );
                 }
                 else
@@ -46,7 +49,8 @@ namespace com.blueboxmoon.AcmeCertificate
                     Rock.Logging.RockLogger.Log.Information( AcmeHelper.LoggingDomain, $"Received challenge request for token '{token}' and responding with '{authorization}'." );
 
                     context.Response.StatusCode = 200;
-                    context.Response.Headers.Set( "Content-Type", "text-plain" );
+                    context.Response.Headers.Set( "Content-Type", "text/plain" );
+                    context.Response.Headers.Set( "X-Content-Type-Options", "nosniff" );
                     context.Response.Write( authorization );
                 }
             }

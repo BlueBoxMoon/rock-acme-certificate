@@ -799,6 +799,21 @@ namespace com.blueboxmoon.AcmeCertificate
         }
 
         /// <summary>
+        /// Determines whether the current request was made with the POST method.
+        /// Block actions can be reached with GET, and the authentication cookie is
+        /// sent on a cross-site top-level navigation, so a state-changing action
+        /// that runs on GET can be triggered by a link on another site (CSRF).
+        /// State-changing actions require this to be true before they run.
+        /// </summary>
+        /// <returns><c>true</c> if the current request is a POST.</returns>
+        static public bool IsPostRequest()
+        {
+            var method = System.Web.HttpContext.Current?.Request?.HttpMethod;
+
+            return string.Equals( method, "POST", StringComparison.OrdinalIgnoreCase );
+        }
+
+        /// <summary>
         /// Removes the certificate that matches the hash from the certificate store.
         /// </summary>
         /// <param name="certificateHash">The SHA-1 hash of the certificate to be removed.</param>

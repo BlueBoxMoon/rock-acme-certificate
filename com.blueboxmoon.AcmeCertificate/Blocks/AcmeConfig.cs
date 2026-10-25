@@ -54,6 +54,19 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
             };
         }
 
+        /// <summary>
+        /// Rejects a request that is not a POST. State-changing block actions can
+        /// otherwise be triggered by a cross-site GET link that carries the
+        /// visitor's authentication cookie.
+        /// </summary>
+        /// <returns>A method-not-allowed result when the request is not a POST, otherwise <c>null</c>.</returns>
+        private BlockActionResult RequirePostRequest()
+        {
+            return AcmeHelper.IsPostRequest()
+                ? null
+                : ActionStatusCode( System.Net.HttpStatusCode.MethodNotAllowed );
+        }
+
         #endregion Methods
 
         #region Block Actions
@@ -87,6 +100,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult Register( string email, bool testMode, bool agreeToTerms )
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             if ( !agreeToTerms )
             {
                 return ActionBadRequest( "You must read and agree to the terms of service." );
@@ -112,6 +131,12 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
         [BlockAction]
         public BlockActionResult SaveAccount( bool offlineMode )
         {
+            var methodError = RequirePostRequest();
+            if ( methodError != null )
+            {
+                return methodError;
+            }
+
             var account = AcmeHelper.LoadAccountData();
 
             account.OfflineMode = offlineMode;
