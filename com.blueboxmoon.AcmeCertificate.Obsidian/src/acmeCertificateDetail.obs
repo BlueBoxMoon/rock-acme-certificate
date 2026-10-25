@@ -247,6 +247,7 @@
     const renewSuccess = ref(false);
     const renewDone = ref(false);
     const renewResult = ref<CertificateDataBag | null>(null);
+    const renewInstalled = ref(false);
 
     // #endregion
 
@@ -265,8 +266,11 @@
     const bindingModalSaveText = computed(() => editingBindingIndex.value === null ? "Add" : "Save");
 
     const successMessage = computed(() => {
-        const action = !bag.offlineMode && renewResult.value?.privateKey ? "installed" : "renewed";
-        return `Certificate has been ${action}. You can see the certificate data by expanding the panels below.`;
+        if (renewInstalled.value) {
+            return "Certificate has been renewed and installed.";
+        }
+
+        return "Certificate has been renewed. You can see the certificate data by expanding the panels below.";
     });
 
     // #endregion
@@ -550,30 +554,6 @@
         renewStatus.value = renewStatus.value + (renewStatus.value !== "" ? "\n" : "") + message;
     }
 
-    async function installCertificate(certificate: CertificateDataBag, retry: boolean): Promise<void> {
-        updateStatus("Installing Certificate...");
-
-        let result;
-
-        try {
-            result = await invokeBlockAction("InstallCertificate", { certificate });
-        }
-        catch {
-            // The connection likely dropped because IIS bindings were reconfigured.
-            // Fall through to verification, which is the source of truth.
-            return;
-        }
-
-        if (!result.isSuccess) {
-            if (retry) {
-                await installCertificate(certificate, false);
-                return;
-            }
-
-            throw new Error(result.errorMessage ?? "Failed to install certificate.");
-        }
-    }
-
     async function onRequestCertificate(): Promise<void> {
         renewStarted.value = true;
         renewRunning.value = true;
@@ -582,7 +562,17 @@
         renewSuccess.value = false;
         renewDone.value = false;
         renewResult.value = null;
+        renewInstalled.value = false;
         isBusy.value = true;
+
+        // A custom CSR means the caller holds the private key, so the server never
+        // installs it. In online mode without a custom CSR the server generates the
+        // key, installs the certificate, and never returns the key to us. In every
+        // other case the certificate (and key, when the server made one) is handed
+        // back for the administrator to install manually.
+        const customCsr = renewCsr.value ? renewCsr.value : null;
+        const serverInstalls = !bag.offlineMode && !customCsr;
+        renewInstalled.value = serverInstalls;
 
         try {
             updateStatus("Determining configuration...");
@@ -592,21 +582,48 @@
             }
             const oldHash = hashResult.data ?? "";
 
-            updateStatus("Renewing certificate...");
-            const renewResponse = await invokeBlockAction<CertificateDataBag>("RenewCertificate", {
-                csr: renewCsr.value ? renewCsr.value : null
-            });
-            if (!renewResponse.isSuccess || !renewResponse.data) {
-                throw new Error(renewResponse.errorMessage ?? "Unable to renew certificate.");
-            }
-            const certificate = renewResponse.data;
+            updateStatus(serverInstalls ? "Renewing and installing certificate..." : "Renewing certificate...");
 
-            if (certificate.privateKey && !bag.offlineMode) {
-                await installCertificate(certificate, true);
+            let certificate: CertificateDataBag | null = null;
+            let renewReturned = false;
+
+            try {
+                const renewResponse = await invokeBlockAction<CertificateDataBag>("RenewCertificate", {
+                    csr: customCsr
+                });
+                renewReturned = true;
+                if (!renewResponse.isSuccess || !renewResponse.data) {
+                    throw new Error(renewResponse.errorMessage ?? "Unable to renew certificate.");
+                }
+                certificate = renewResponse.data;
+            }
+            catch (e) {
+                // Only a dropped connection is tolerated, and only when the server
+                // installs. Reconfiguring the IIS binding can reset this connection
+                // after the certificate was already obtained and its hash saved, so
+                // verification below is the source of truth. If the call actually
+                // returned (an application error such as a failed renewal), or this
+                // is a manual install with no binding change, the failure is real.
+                if (renewReturned || !serverInstalls) {
+                    throw e;
+                }
+            }
+
+            if (serverInstalls) {
+                // Use the hash from the response, or fetch the newly saved hash if the
+                // connection dropped during the binding change.
+                let newHash = certificate?.hash ?? "";
+                if (!newHash) {
+                    const rehashResult = await invokeBlockAction<string>("GetCertificateHash");
+                    if (!rehashResult.isSuccess) {
+                        throw new Error(rehashResult.errorMessage ?? "Unable to determine the new certificate.");
+                    }
+                    newHash = rehashResult.data ?? "";
+                }
 
                 updateStatus("Verifying Certificate Installed Correctly (this may take a while)...");
                 const verifyResult = await invokeBlockAction<boolean>("VerifyCertificateInstalled", {
-                    certificateHash: certificate.hash
+                    certificateHash: newHash
                 });
                 if (!verifyResult.isSuccess) {
                     throw new Error(verifyResult.errorMessage ?? "Unable to verify certificate.");
@@ -615,7 +632,7 @@
                     throw new Error("The certificate did not install correctly and no error was returned. Check the exception log for more details.");
                 }
 
-                if (bag.removeOldCertificate && oldHash) {
+                if (bag.removeOldCertificate && oldHash && oldHash !== newHash) {
                     updateStatus("Removing old certificate...");
                     try {
                         await invokeBlockAction("DeleteCertificateHash", { certificateHash: oldHash });

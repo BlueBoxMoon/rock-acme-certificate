@@ -808,32 +808,28 @@ namespace com.blueboxmoon.AcmeCertificate.Blocks
                     return ActionBadRequest( errorMessage );
                 }
 
+                //
+                // In online mode with a server-generated key, install the certificate
+                // here so the private key never leaves the server. This mirrors what
+                // the renewal job does. A custom CSR has no server key (the caller
+                // holds it), so it is always a manual install and is never installed
+                // here. Offline mode is always a manual install.
+                //
+                var offlineMode = AcmeHelper.LoadAccountData().OfflineMode;
+
+                if ( !offlineMode && !string.IsNullOrWhiteSpace( certificateData.PrivateKey ) )
+                {
+                    AcmeHelper.InstallCertificateData( certificateData, true );
+
+                    //
+                    // Never return the private key to the browser once the server has
+                    // installed it.
+                    //
+                    certificateData.PrivateKey = string.Empty;
+                }
+
                 return ActionOk( ToCertificateDataBag( certificateData ) );
             }
-        }
-
-        /// <summary>
-        /// Installs the renewed certificate and configures IIS.
-        /// </summary>
-        /// <param name="certificate">The certificate material returned from the renew step.</param>
-        [BlockAction]
-        public BlockActionResult InstallCertificate( CertificateDataBag certificate )
-        {
-            var methodError = RequirePostRequest();
-            if ( methodError != null )
-            {
-                return methodError;
-            }
-
-            var authError = RequireBlockEdit();
-            if ( authError != null )
-            {
-                return authError;
-            }
-
-            AcmeHelper.InstallCertificateData( ToCertificateData( certificate ), true );
-
-            return ActionOk();
         }
 
         /// <summary>
